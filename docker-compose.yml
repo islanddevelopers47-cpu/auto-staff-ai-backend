@@ -1,0 +1,26 @@
+services:
+  auto-staff-ai:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      HOST: "0.0.0.0"
+      NODE_ENV: production
+      JWT_SECRET: "${JWT_SECRET:-change-me}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin123}"
+      DATABASE_PATH: /app/data/autostaff.db
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      GOOGLE_AI_API_KEY: "${GOOGLE_AI_API_KEY}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      PUBLIC_URL: "${PUBLIC_URL}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    volumes:
+      - autostaff-data:/app/data
+    restart: unless-stopped
+    init: true
+
+volumes:
+  autostaff-data:

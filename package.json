@@ -1,0 +1,48 @@
+{
+  "name": "auto-staff-ai",
+  "version": "1.0.0",
+  "description": "Auto Staff AI — Web-based Telegram bot management platform with AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "dev:once": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@grammyjs/runner": "^2.0.3",
+    "@grammyjs/transformer-throttler": "^1.2.1",
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "grammy": "^1.31.5",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.1.2",
+    "openai": "^4.77.0",
+    "tslog": "^4.10.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1",
+    "bcryptjs": "^2.4.3",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

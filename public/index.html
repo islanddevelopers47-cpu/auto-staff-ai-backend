@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Staff AI — Dashboard</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login screen -->
+    <div id="login-screen" class="screen">
+      <div class="card center-card">
+        <h1>Auto Staff AI</h1>
+        <p class="subtitle">Telegram Bot Management Platform</p>
+        <form id="login-form">
+          <div class="field">
+            <label for="login-username">Username</label>
+            <input type="text" id="login-username" placeholder="admin" required>
+          </div>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" placeholder="Password" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Log In</button>
+          <p id="login-error" class="error" style="display:none"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard-screen" class="screen" style="display:none">
+      <header>
+        <h1>Auto Staff AI</h1>
+        <nav>
+          <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+          <button class="nav-btn" data-tab="bots">Bots</button>
+          <button class="nav-btn" data-tab="agents">Agents</button>
+          <button class="nav-btn" data-tab="chat">Chat Test</button>
+          <button class="nav-btn" data-tab="settings">Settings</button>
+        </nav>
+        <div class="header-right">
+          <span id="user-info"></span>
+          <button id="logout-btn" class="btn btn-sm">Logout</button>
+        </div>
+      </header>
+
+      <!-- Dashboard Tab -->
+      <div id="tab-dashboard" class="tab-content">
+        <h2>Setup Status</h2>
+        <div id="setup-status" class="status-grid"></div>
+        <h2>Quick Stats</h2>
+        <div id="quick-stats" class="stats-grid"></div>
+      </div>
+
+      <!-- Bots Tab -->
+      <div id="tab-bots" class="tab-content" style="display:none">
+        <div class="tab-header">
+          <h2>Telegram Bots</h2>
+          <button id="add-bot-btn" class="btn btn-primary">+ Add Bot</button>
+        </div>
+        <div id="bots-list"></div>
+
+        <!-- Add Bot Modal -->
+        <div id="add-bot-modal" class="modal" style="display:none">
+          <div class="modal-content">
+            <h3>Add Telegram Bot</h3>
+            <p class="help-text">
+              1. Open Telegram and search for <strong>@BotFather</strong><br>
+              2. Send <code>/newbot</code> and follow the steps<br>
+              3. Copy the bot token and paste it below
+            </p>
+            <form id="add-bot-form">
+              <div class="field">
+                <label for="bot-name">Bot Name</label>
+                <input type="text" id="bot-name" placeholder="My Bot" required>
+              </div>
+              <div class="field">
+                <label for="bot-token">Telegram Bot Token</label>
+                <input type="text" id="bot-token" placeholder="123456:ABC-DEF..." required>
+                <button type="button" id="validate-token-btn" class="btn btn-sm">Validate</button>
+                <span id="token-status"></span>
+              </div>
+              <div class="field">
+                <label for="bot-agent">Agent</label>
+                <select id="bot-agent"></select>
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="btn" onclick="closeModal('add-bot-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Bot</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agents Tab -->
+      <div id="tab-agents" class="tab-content" style="display:none">
+        <div class="tab-header">
+          <h2>AI Agents</h2>
+          <button id="add-agent-btn" class="btn btn-primary">+ Create Agent</button>
+        </div>
+        <div id="agents-list"></div>
+
+        <!-- Add Agent Modal -->
+        <div id="add-agent-modal" class="modal" style="display:none">
+          <div class="modal-content">
+            <h3>Create AI Agent</h3>
+            <form id="add-agent-form">
+              <div class="field">
+                <label for="agent-name">Name</label>
+                <input type="text" id="agent-name" placeholder="My Agent" required>
+              </div>
+              <div class="field">
+                <label for="agent-desc">Description</label>
+                <input type="text" id="agent-desc" placeholder="What does this agent do?">
+              </div>
+              <div class="field">
+                <label for="agent-provider">Provider</label>
+                <select id="agent-provider">
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google">Google</option>
+                  <option value="ollama">Ollama</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="agent-model">Model</label>
+                <select id="agent-model"></select>
+              </div>
+              <div class="field">
+                <label for="agent-prompt">System Prompt</label>
+                <textarea id="agent-prompt" rows="6" placeholder="You are a helpful assistant..."></textarea>
+              </div>
+              <div class="field">
+                <label for="agent-temp">Temperature (0-1)</label>
+                <input type="number" id="agent-temp" value="0.7" min="0" max="2" step="0.1">
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="btn" onclick="closeModal('add-agent-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Agent</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Test Tab -->
+      <div id="tab-chat" class="tab-content" style="display:none">
+        <div class="tab-header">
+          <h2>Chat Test</h2>
+          <select id="chat-bot-select"></select>
+        </div>
+        <div id="chat-messages" class="chat-box"></div>
+        <form id="chat-form" class="chat-input">
+          <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+          <button type="submit" class="btn btn-primary">Send</button>
+        </form>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="tab-settings" class="tab-content" style="display:none">
+        <h2>API Keys</h2>
+        <p class="help-text">
+          Add your API keys to connect to AI providers. Keys are stored securely in the database and used automatically when your bots run.
+          You need at least <strong>one</strong> provider key to use AI features.
+        </p>
+
+        <div class="api-key-providers">
+          <!-- OpenAI -->
+          <div class="card api-key-card">
+            <div class="api-key-header">
+              <div>
+                <h3>OpenAI</h3>
+                <p>GPT-4o, GPT-4o-mini, GPT-3.5-turbo, o1</p>
+              </div>
+              <span id="openai-status" class="status-badge status-stopped">Not configured</span>
+            </div>
+            <form class="api-key-form" data-provider="openai">
+              <div class="field-row">
+                <input type="password" class="api-key-input" placeholder="sk-proj-..." autocomplete="off">
+                <button type="button" class="btn btn-sm toggle-visibility">Show</button>
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm btn-danger api-key-delete" style="display:none">Remove</button>
+              </div>
+              <div class="api-key-msg"></div>
+            </form>
+            <p class="help-text" style="margin-top:0.5rem">Get your key at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></p>
+          </div>
+
+          <!-- Anthropic -->
+          <div class="card api-key-card">
+            <div class="api-key-header">
+              <div>
+                <h3>Anthropic</h3>
+                <p>Claude Sonnet, Claude Haiku, Claude Opus</p>
+              </div>
+              <span id="anthropic-status" class="status-badge status-stopped">Not configured</span>
+            </div>
+            <form class="api-key-form" data-provider="anthropic">
+              <div class="field-row">
+                <input type="password" class="api-key-input" placeholder="sk-ant-..." autocomplete="off">
+                <button type="button" class="btn btn-sm toggle-visibility">Show</button>
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm btn-danger api-key-delete" style="display:none">Remove</button>
+              </div>
+              <div class="api-key-msg"></div>
+            </form>
+            <p class="help-text" style="margin-top:0.5rem">Get your key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a></p>
+          </div>
+
+          <!-- Google -->
+          <div class="card api-key-card">
+            <div class="api-key-header">
+              <div>
+                <h3>Google Gemini</h3>
+                <p>Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash</p>
+              </div>
+              <span id="google-status" class="status-badge status-stopped">Not configured</span>
+            </div>
+            <form class="api-key-form" data-provider="google">
+              <div class="field-row">
+                <input type="password" class="api-key-input" placeholder="AIza..." autocomplete="off">
+                <button type="button" class="btn btn-sm toggle-visibility">Show</button>
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm btn-danger api-key-delete" style="display:none">Remove</button>
+              </div>
+              <div class="api-key-msg"></div>
+            </form>
+            <p class="help-text" style="margin-top:0.5rem">Get your key at <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a></p>
+          </div>
+
+          <!-- Ollama -->
+          <div class="card api-key-card">
+            <div class="api-key-header">
+              <div>
+                <h3>Ollama (Local)</h3>
+                <p>Llama 3, Mistral, CodeLlama, Phi — runs locally, no API key needed</p>
+              </div>
+              <span id="ollama-status" class="status-badge status-running">Available</span>
+            </div>
+            <p class="help-text">Install from <a href="https://ollama.com" target="_blank">ollama.com</a>, then run <code>ollama pull llama3.2</code></p>
+          </div>
+        </div>
+
+        <div style="margin-top:1.5rem">
+          <h2>Stored Keys</h2>
+          <div id="stored-keys-list"></div>
+        </div>
+      </div>
+
+      <!-- Event Log -->
+      <div id="event-log" class="event-log">
+        <h4>Live Events</h4>
+        <div id="events"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
