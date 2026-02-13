@@ -32,6 +32,10 @@ export function initFirebase(): boolean {
   } else if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
       serviceAccountData = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      // Ensure private_key newlines are actual newlines (env vars can double-escape them)
+      if (serviceAccountData.private_key) {
+        serviceAccountData.private_key = serviceAccountData.private_key.replace(/\\n/g, "\n");
+      }
       log.info("Loaded Firebase service account from FIREBASE_SERVICE_ACCOUNT_JSON env var");
     } catch (parseErr) {
       log.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON env var");

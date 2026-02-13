@@ -8,3 +8,6 @@ data/
 .DS_Store
 *-firebase-adminsdk-*.json
 firebase-service-account.json
+
+# Local Netlify folder
+.netlify
