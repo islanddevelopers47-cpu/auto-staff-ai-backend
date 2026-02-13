@@ -29,8 +29,6 @@ RUN mkdir -p /app/data && chown -R node:node /app/data
 ENV NODE_ENV=production
 ENV DATABASE_PATH=/app/data/autostaff.db
 
-USER node
-
 # Railway injects PORT dynamically; no fixed EXPOSE needed
 
 CMD ["node", "dist/index.js"]
