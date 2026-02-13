@@ -156,4 +156,149 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    name: "002_sessions_nullable_bot_id",
+    sql: `
+      -- Recreate sessions table with nullable bot_id to support agent-only chats
+      CREATE TABLE sessions_new (
+        id TEXT PRIMARY KEY,
+        bot_id TEXT REFERENCES bots(id) ON DELETE CASCADE,
+        chat_id TEXT NOT NULL,
+        chat_type TEXT NOT NULL DEFAULT 'private' CHECK (chat_type IN ('private', 'group', 'supergroup', 'channel')),
+        agent_id TEXT,
+        title TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO sessions_new SELECT * FROM sessions;
+      DROP TABLE sessions;
+      ALTER TABLE sessions_new RENAME TO sessions;
+      CREATE UNIQUE INDEX idx_sessions_bot_chat ON sessions(bot_id, chat_id);
+    `,
+  },
+  {
+    name: "003_web_bots",
+    sql: `
+      -- Add platform column (telegram or web) and embed_token for web bots
+      ALTER TABLE bots ADD COLUMN platform TEXT NOT NULL DEFAULT 'telegram' CHECK (platform IN ('telegram', 'web'));
+      ALTER TABLE bots ADD COLUMN embed_token TEXT;
+      ALTER TABLE bots ADD COLUMN allowed_origins TEXT NOT NULL DEFAULT '*';
+      ALTER TABLE bots ADD COLUMN widget_config TEXT NOT NULL DEFAULT '{}';
+
+      -- Recreate bots table with nullable telegram_token
+      CREATE TABLE bots_new (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        platform TEXT NOT NULL DEFAULT 'telegram' CHECK (platform IN ('telegram', 'web')),
+        telegram_token TEXT,
+        telegram_bot_username TEXT,
+        telegram_bot_id TEXT,
+        agent_id TEXT,
+        status TEXT NOT NULL DEFAULT 'stopped' CHECK (status IN ('running', 'stopped', 'error')),
+        mode TEXT NOT NULL DEFAULT 'polling' CHECK (mode IN ('polling', 'webhook')),
+        webhook_url TEXT,
+        enabled BOOLEAN NOT NULL DEFAULT 1,
+        error_message TEXT,
+        embed_token TEXT,
+        allowed_origins TEXT NOT NULL DEFAULT '*',
+        widget_config TEXT NOT NULL DEFAULT '{}',
+        config TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO bots_new (id, user_id, name, platform, telegram_token, telegram_bot_username, telegram_bot_id, agent_id, status, mode, webhook_url, enabled, error_message, config, created_at, updated_at)
+        SELECT id, user_id, name, 'telegram', telegram_token, telegram_bot_username, telegram_bot_id, agent_id, status, mode, webhook_url, enabled, error_message, config, created_at, updated_at FROM bots;
+      DROP TABLE bots;
+      ALTER TABLE bots_new RENAME TO bots;
+      CREATE UNIQUE INDEX idx_bots_embed_token ON bots(embed_token);
+    `,
+  },
+  {
+    name: "004_firebase_auth",
+    sql: `
+      -- Add Firebase auth fields to users table
+      ALTER TABLE users ADD COLUMN firebase_uid TEXT;
+      ALTER TABLE users ADD COLUMN email TEXT;
+      ALTER TABLE users ADD COLUMN photo_url TEXT;
+      ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local';
+      CREATE UNIQUE INDEX idx_users_firebase_uid ON users(firebase_uid);
+      CREATE UNIQUE INDEX idx_users_email ON users(email);
+
+      -- Make password_hash nullable for Firebase users (they don't have local passwords)
+      CREATE TABLE users_new (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT,
+        role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+        display_name TEXT,
+        firebase_uid TEXT,
+        email TEXT,
+        photo_url TEXT,
+        auth_provider TEXT NOT NULL DEFAULT 'local',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO users_new (id, username, password_hash, role, display_name, firebase_uid, email, photo_url, auth_provider, created_at, updated_at)
+        SELECT id, username, password_hash, role, display_name, firebase_uid, email, photo_url, auth_provider, created_at, updated_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      CREATE UNIQUE INDEX idx_users_firebase_uid2 ON users(firebase_uid);
+      CREATE UNIQUE INDEX idx_users_email2 ON users(email);
+    `,
+  },
+  {
+    name: "005_connected_accounts",
+    sql: `
+      CREATE TABLE IF NOT EXISTS connected_accounts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('github', 'google_drive')),
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        account_name TEXT,
+        account_email TEXT,
+        account_avatar TEXT,
+        scopes TEXT,
+        token_expires_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX idx_connected_accounts_user_provider ON connected_accounts(user_id, provider);
+    `,
+  },
+  {
+    name: "006_agent_tasks",
+    sql: `
+      CREATE TABLE agent_tasks (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+        priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+        integrations TEXT NOT NULL DEFAULT '[]',
+        result TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE agent_task_assignments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'worker',
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+        output TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_task_assignments_task ON agent_task_assignments(task_id);
+      CREATE INDEX idx_agent_tasks_user ON agent_tasks(user_id, status);
+    `,
+  },
 ];

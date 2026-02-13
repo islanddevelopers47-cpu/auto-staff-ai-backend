@@ -6,6 +6,8 @@ import { initDatabase } from "./database/db.js";
 import { ensureAdminUser } from "./database/users.js";
 import { BotManager } from "./telegram/bot-manager.js";
 import { AgentRegistry } from "./agents/agent-registry.js";
+import { initFirebase } from "./auth/firebase.js";
+import { setAuthDb } from "./auth/middleware.js";
 
 // Load environment variables first
 loadEnv();
@@ -13,7 +15,7 @@ loadEnv();
 const log = createLogger("main");
 
 async function main() {
-  log.info("Starting Auto Staff AI...");
+  log.info("Starting Claw Staffer...");
 
   // Initialize database
   const db = initDatabase();
@@ -22,6 +24,11 @@ async function main() {
   // Ensure admin user exists
   ensureAdminUser(db);
   log.info("Admin user verified");
+
+  // Initialize Firebase auth
+  setAuthDb(db);
+  const firebaseOk = initFirebase();
+  log.info(firebaseOk ? "Firebase auth enabled" : "Firebase auth disabled (no service account)");
 
   // Initialize agent registry
   const agentRegistry = new AgentRegistry(db);
@@ -39,7 +46,7 @@ async function main() {
   await botManager.autoStartBots();
   log.info("Bot manager ready");
 
-  log.info("Auto Staff AI is running!");
+  log.info("Claw Staffer is running!");
 
   // Graceful shutdown
   const shutdown = async () => {

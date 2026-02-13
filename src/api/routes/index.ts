@@ -10,6 +10,9 @@ import { createSessionsRouter } from "./sessions.js";
 import { createSetupRouter } from "./setup.js";
 import { createSkillsRouter } from "./skills.js";
 import { createApiKeysRouter } from "./api-keys.js";
+import { createWebBotsRouter } from "./web-bots.js";
+import { createIntegrationsRouter } from "./integrations.js";
+import { createAgentTasksRouter } from "./agent-tasks.js";
 
 export function registerRoutes(
   app: Express,
@@ -40,6 +43,15 @@ export function registerRoutes(
 
   // API keys management routes
   app.use("/api", createApiKeysRouter(db));
+
+  // Web bots routes
+  app.use("/api", createWebBotsRouter(db, agentRegistry));
+
+  // Integrations routes (GitHub, Google Drive, Vercel, Netlify, Docker)
+  app.use("/api", createIntegrationsRouter(db));
+
+  // Agent tasks routes
+  app.use("/api", createAgentTasksRouter(db, agentRegistry));
 
   // Telegram webhook endpoint (per-bot)
   app.post("/api/telegram/webhook/:botId", (req, res) => {

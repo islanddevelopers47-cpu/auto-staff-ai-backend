@@ -25,6 +25,10 @@ export class BotManager {
     this.agentRegistry = agentRegistry;
   }
 
+  getAgentRegistry(): AgentRegistry {
+    return this.agentRegistry;
+  }
+
   setEventBus(eventBus: EventBus): void {
     this.eventBus = eventBus;
   }
@@ -61,6 +65,10 @@ export class BotManager {
     };
 
     try {
+      if (!botRecord.telegram_token) {
+        throw new Error("Bot has no Telegram token configured");
+      }
+
       const instance = await createBotInstance(
         botRecord.telegram_token,
         botId,
@@ -233,7 +241,7 @@ export class BotManager {
         await instance.sendMessage(
           msg.chatId,
           `⚠️ No API key configured.\n\n` +
-            `Please add at least one AI provider API key in the Auto Staff AI dashboard:\n` +
+            `Please add at least one AI provider API key in the Claw Staffer dashboard:\n` +
             `Settings → API Keys\n\n` +
             `Supported: OpenAI, Anthropic, Google Gemini`,
           { replyToMessageId: msg.messageId }
@@ -281,7 +289,7 @@ export class BotManager {
       if (errMsg.includes("API key") || errMsg.includes("401") || errMsg.includes("403")) {
         userMessage =
           `🔑 API key error for ${provider}. Your key may be invalid or expired.\n\n` +
-          `Please check your API key in the Auto Staff AI dashboard → Settings → API Keys.`;
+          `Please check your API key in the Claw Staffer dashboard → Settings → API Keys.`;
       } else if (errMsg.includes("429") || errMsg.includes("rate limit")) {
         userMessage = "⏳ Rate limit reached. Please wait a moment and try again.";
       } else if (errMsg.includes("timeout") || errMsg.includes("ECONNREFUSED")) {

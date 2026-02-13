@@ -4,6 +4,8 @@ import type { BotManager } from "../../telegram/bot-manager.js";
 import { createBot, listBots, findBotById, updateBot, deleteBot } from "../../database/bots.js";
 import { listSessions } from "../../database/sessions.js";
 import { authMiddleware } from "../../auth/middleware.js";
+import { runAgent } from "../../agents/agent-runner.js";
+import { resolveApiKeyForBot, findFallbackProvider, type ProviderName } from "../../agents/model-providers.js";
 
 export function createBotsRouter(db: Database.Database, botManager: BotManager): Router {
   const router = Router();
@@ -171,6 +173,73 @@ export function createBotsRouter(db: Database.Database, botManager: BotManager):
       });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to validate token" });
+    }
+  });
+
+  // Chat test endpoint — runs agent pipeline via API
+  router.post("/bots/:id/chat", authMiddleware, async (req, res) => {
+    try {
+      const botId = String(req.params.id);
+      const bot = findBotById(db, botId);
+      if (!bot) {
+        res.status(404).json({ error: "Bot not found" });
+        return;
+      }
+
+      const { message } = req.body as { message?: string };
+      if (!message) {
+        res.status(400).json({ error: "message is required" });
+        return;
+      }
+
+      // Get the bot's agent
+      const agentRegistry = botManager.getAgentRegistry();
+      const agent = bot.agent_id
+        ? agentRegistry.getAgent(bot.agent_id)
+        : agentRegistry.getDefaultAgent();
+
+      if (!agent) {
+        res.status(400).json({ error: "No agent configured for this bot" });
+        return;
+      }
+
+      // Resolve API key with fallback
+      let provider = agent.model_provider as ProviderName;
+      let model = agent.model_name;
+      let apiKey = resolveApiKeyForBot(db, botId, provider);
+
+      if (!apiKey && provider !== "ollama") {
+        const fallback = findFallbackProvider(db, botId, provider);
+        if (fallback) {
+          provider = fallback.provider;
+          model = fallback.model;
+          apiKey = fallback.apiKey;
+        } else {
+          res.status(400).json({
+            error: `No API key configured for ${provider}. Add one in Settings → API Keys.`,
+          });
+          return;
+        }
+      }
+
+      const result = await runAgent(db, agent, {
+        botId,
+        chatId: `web-test-${req.user!.userId}`,
+        chatType: "private",
+        userMessage: message,
+        senderName: req.user!.userId,
+        apiKeyOverride: apiKey,
+        providerOverride: provider,
+        modelOverride: model,
+      });
+
+      res.json({
+        response: result.response,
+        model: result.model,
+        usage: result.usage,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Agent run failed" });
     }
   });
 

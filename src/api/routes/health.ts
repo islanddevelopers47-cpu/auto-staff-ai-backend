@@ -6,7 +6,7 @@ export function createHealthRouter(): Router {
   router.get("/health", (_req, res) => {
     res.json({
       status: "ok",
-      service: "auto-staff-ai",
+      service: "claw-staffer",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });

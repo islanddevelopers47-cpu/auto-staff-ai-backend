@@ -2,7 +2,8 @@ import { Router } from "express";
 import type Database from "better-sqlite3";
 import type { AgentRegistry } from "../../agents/agent-registry.js";
 import { createAgent, findAgentById, updateAgent, deleteAgent } from "../../database/agents.js";
-import { getAvailableProviders, getDefaultModels, type ProviderName } from "../../agents/model-providers.js";
+import { getAvailableProviders, getDefaultModels, resolveApiKeyForUser, findFallbackProviderForUser, type ProviderName } from "../../agents/model-providers.js";
+import { runAgent } from "../../agents/agent-runner.js";
 import { authMiddleware } from "../../auth/middleware.js";
 
 export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRegistry): Router {
@@ -133,6 +134,66 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
     const name = String(req.params.name) as ProviderName;
     const models = getDefaultModels(name);
     res.json({ provider: name, models });
+  });
+
+  // Direct agent chat — runs agent pipeline without a bot
+  router.post("/agents/:id/chat", authMiddleware, async (req, res) => {
+    try {
+      const agentId = String(req.params.id);
+      const agent = agentRegistry.getAgent(agentId);
+      if (!agent) {
+        res.status(404).json({ error: "Agent not found" });
+        return;
+      }
+
+      const { message } = req.body as { message?: string };
+      if (!message) {
+        res.status(400).json({ error: "message is required" });
+        return;
+      }
+
+      const userId = req.user!.userId;
+
+      // Resolve API key with fallback
+      let provider = agent.model_provider as ProviderName;
+      let model = agent.model_name;
+      let apiKey = resolveApiKeyForUser(db, userId, provider);
+
+      if (!apiKey && provider !== "ollama") {
+        const fallback = findFallbackProviderForUser(db, userId, provider);
+        if (fallback) {
+          provider = fallback.provider;
+          model = fallback.model;
+          apiKey = fallback.apiKey;
+        } else {
+          res.status(400).json({
+            error: `No API key configured for ${provider}. Add one in Settings → API Keys.`,
+          });
+          return;
+        }
+      }
+
+      const result = await runAgent(db, agent, {
+        botId: null,
+        chatId: `agent-chat-${userId}-${agentId}`,
+        chatType: "private",
+        userMessage: message,
+        senderName: userId,
+        apiKeyOverride: apiKey,
+        providerOverride: provider,
+        modelOverride: model,
+        userId,
+      });
+
+      res.json({
+        response: result.response,
+        model: result.model,
+        provider,
+        usage: result.usage,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Agent chat failed" });
+    }
   });
 
   return router;

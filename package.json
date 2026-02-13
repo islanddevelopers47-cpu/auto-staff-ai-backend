@@ -1,7 +1,7 @@
 {
-  "name": "auto-staff-ai",
+  "name": "claw-staffer",
   "version": "1.0.0",
-  "description": "Auto Staff AI — Web-based Telegram bot management platform with AI agents",
+  "description": "Claw Staffer — Web-based Telegram bot management platform with AI agents",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -15,24 +15,25 @@
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/transformer-throttler": "^1.2.1",
+    "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
+    "firebase-admin": "^13.6.1",
     "grammy": "^1.31.5",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
     "nanoid": "^5.1.2",
+    "node-fetch": "^3.3.2",
     "openai": "^4.77.0",
     "tslog": "^4.10.0",
     "ws": "^8.18.0",
-    "zod": "^3.24.1",
-    "bcryptjs": "^2.4.3",
-    "multer": "^1.4.5-lts.1",
-    "node-fetch": "^3.3.2"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",

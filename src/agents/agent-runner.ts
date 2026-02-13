@@ -11,12 +11,13 @@ import {
   addMessage,
 } from "../database/sessions.js";
 import { buildSkillsPrompt } from "./skills-loader.js";
+import { buildIntegrationToolsPrompt, executeToolCalls } from "../integrations/agent-tools.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("agent-runner");
 
 export interface RunAgentInput {
-  botId: string;
+  botId: string | null;
   chatId: string;
   chatType: "private" | "group" | "supergroup" | "channel";
   userMessage: string;
@@ -25,6 +26,7 @@ export interface RunAgentInput {
   apiKeyOverride?: string;
   providerOverride?: ProviderName;
   modelOverride?: string;
+  userId?: string;
 }
 
 export interface RunAgentResult {
@@ -62,8 +64,16 @@ export async function runAgent(
   const history = getSessionHistory(db, session.id, historyLimit);
 
   // Build messages array for the LLM
+  let systemPrompt = buildSystemPrompt(agent, input);
+
+  // Add integration tools context if user has connected accounts
+  if (input.userId) {
+    const toolsPrompt = buildIntegrationToolsPrompt(db, input.userId);
+    if (toolsPrompt) systemPrompt += toolsPrompt;
+  }
+
   const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(agent, input) },
+    { role: "system", content: systemPrompt },
   ];
 
   for (const msg of history) {
@@ -95,11 +105,40 @@ export async function runAgent(
       input.apiKeyOverride
     );
 
+    let finalContent = result.content;
+
+    // Check for tool calls and execute them (max 3 rounds)
+    if (input.userId) {
+      let toolRound = 0;
+      let currentContent = result.content;
+      while (toolRound < 3) {
+        const { results: toolResults, hasTools } = await executeToolCalls(db, input.userId, currentContent);
+        if (!hasTools) break;
+
+        // Add tool results to conversation and get follow-up
+        const toolResultText = toolResults.map(r =>
+          `[Tool Result: ${r.tool}] ${r.success ? r.result : `ERROR: ${r.result}`}`
+        ).join("\n\n");
+
+        messages.push({ role: "assistant", content: currentContent });
+        messages.push({ role: "user", content: `Tool execution results:\n\n${toolResultText}\n\nPlease continue your response based on these results.` });
+
+        const followUp = await chatCompletion(
+          effectiveProvider,
+          { model: effectiveModel, messages, temperature: agent.temperature, maxTokens: agent.max_tokens },
+          input.apiKeyOverride
+        );
+        currentContent = followUp.content;
+        toolRound++;
+      }
+      finalContent = currentContent;
+    }
+
     // Save assistant response
-    addMessage(db, session.id, "assistant", result.content);
+    addMessage(db, session.id, "assistant", finalContent);
 
     return {
-      response: result.content,
+      response: finalContent,
       sessionId: session.id,
       model: result.model,
       usage: result.usage,

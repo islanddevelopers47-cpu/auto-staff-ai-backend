@@ -36,10 +36,10 @@ export async function handleCommand(
 
 function handleStart(db: Database.Database, botId: string): string {
   const bot = findBotById(db, botId);
-  const name = bot?.name ?? "Auto Staff AI";
+  const name = bot?.name ?? "Claw Staffer";
   return (
     `👋 Welcome to ${name}!\n\n` +
-    `I'm powered by Auto Staff AI. Send me any message and I'll respond using AI.\n\n` +
+    `I'm powered by Claw Staffer. Send me any message and I'll respond using AI.\n\n` +
     `Commands:\n` +
     `/help - Show available commands\n` +
     `/status - Show bot status\n` +
@@ -120,7 +120,7 @@ function handleModels(): string {
   }
 
   if (!providers.some((p) => p.configured)) {
-    text += "⚠️ No providers configured. Add API keys in the Auto Staff AI dashboard.";
+    text += "⚠️ No providers configured. Add API keys in the Claw Staffer dashboard.";
   }
 
   return text;

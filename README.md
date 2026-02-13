@@ -1,4 +1,4 @@
-# Auto Staff AI — Backend
+# Claw Staffer — Backend
 
 Web-based Telegram bot management platform with AI agents. Built on OpenClaw's architecture, simplified for non-technical users.
 

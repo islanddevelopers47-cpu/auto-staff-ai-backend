@@ -5,7 +5,8 @@ export interface Bot {
   id: string;
   user_id: string;
   name: string;
-  telegram_token: string;
+  platform: "telegram" | "web";
+  telegram_token: string | null;
   telegram_bot_username: string | null;
   telegram_bot_id: string | null;
   agent_id: string | null;
@@ -14,6 +15,9 @@ export interface Bot {
   webhook_url: string | null;
   enabled: boolean;
   error_message: string | null;
+  embed_token: string | null;
+  allowed_origins: string;
+  widget_config: string;
   config: string;
   created_at: string;
   updated_at: string;
@@ -65,7 +69,7 @@ export function listBots(db: Database.Database, userId?: string): Bot[] {
 
 export function listEnabledBots(db: Database.Database): Bot[] {
   return db
-    .prepare("SELECT * FROM bots WHERE enabled = 1 ORDER BY created_at")
+    .prepare("SELECT * FROM bots WHERE enabled = 1 AND platform = 'telegram' ORDER BY created_at")
     .all() as Bot[];
 }
 
@@ -106,6 +110,63 @@ export function updateBot(
 
 export function deleteBot(db: Database.Database, id: string): void {
   db.prepare("DELETE FROM bots WHERE id = ?").run(id);
+}
+
+export interface CreateWebBotInput {
+  userId: string;
+  name: string;
+  agentId?: string;
+  allowedOrigins?: string;
+  widgetConfig?: Record<string, unknown>;
+}
+
+export function createWebBot(db: Database.Database, input: CreateWebBotInput): Bot {
+  const id = generateId();
+  const embedToken = generateId() + generateId(); // longer token for security
+  const widgetConfig = JSON.stringify(input.widgetConfig ?? {
+    primaryColor: "#6C5CE7",
+    position: "bottom-right",
+    greeting: "Hi! How can I help you today?",
+    placeholder: "Type a message...",
+    title: input.name,
+  });
+
+  db.prepare(
+    `INSERT INTO bots (id, user_id, name, platform, agent_id, embed_token, allowed_origins, widget_config, status)
+     VALUES (?, ?, ?, 'web', ?, ?, ?, ?, 'running')`
+  ).run(
+    id,
+    input.userId,
+    input.name,
+    input.agentId ?? null,
+    embedToken,
+    input.allowedOrigins ?? "*",
+    widgetConfig
+  );
+
+  return findBotById(db, id)!;
+}
+
+export function findBotByEmbedToken(db: Database.Database, embedToken: string): Bot | undefined {
+  return db.prepare("SELECT * FROM bots WHERE embed_token = ? AND platform = 'web'").get(embedToken) as Bot | undefined;
+}
+
+export function listWebBots(db: Database.Database, userId?: string): Bot[] {
+  if (userId) {
+    return db
+      .prepare("SELECT * FROM bots WHERE platform = 'web' AND user_id = ? ORDER BY created_at DESC")
+      .all(userId) as Bot[];
+  }
+  return db.prepare("SELECT * FROM bots WHERE platform = 'web' ORDER BY created_at DESC").all() as Bot[];
+}
+
+export function listTelegramBots(db: Database.Database, userId?: string): Bot[] {
+  if (userId) {
+    return db
+      .prepare("SELECT * FROM bots WHERE platform = 'telegram' AND user_id = ? ORDER BY created_at DESC")
+      .all(userId) as Bot[];
+  }
+  return db.prepare("SELECT * FROM bots WHERE platform = 'telegram' ORDER BY created_at DESC").all() as Bot[];
 }
 
 export function setBotStatus(

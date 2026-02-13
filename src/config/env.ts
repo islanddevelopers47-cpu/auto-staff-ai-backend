@@ -16,6 +16,19 @@ const EnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   PUBLIC_URL: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+  FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().default("auto-staff-ai"),
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_DRIVE_CLIENT_ID: z.string().optional(),
+  GOOGLE_DRIVE_CLIENT_SECRET: z.string().optional(),
+  VERCEL_CLIENT_ID: z.string().optional(),
+  VERCEL_CLIENT_SECRET: z.string().optional(),
+  NETLIFY_CLIENT_ID: z.string().optional(),
+  NETLIFY_CLIENT_SECRET: z.string().optional(),
+  XAI_API_KEY: z.string().optional(),
+  DOCKER_HOST: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof EnvSchema>;

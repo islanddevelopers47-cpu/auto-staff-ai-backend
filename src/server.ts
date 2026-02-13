@@ -41,6 +41,38 @@ export async function startServer(
   // WebSocket server
   attachWebSocketServer(httpServer, eventBus);
 
+  // Proxy Firebase auth handler through localhost to avoid cross-domain storage partitioning
+  app.all("/__/auth/{*path}", async (req, res) => {
+    try {
+      const targetUrl = `https://auto-staff-ai.firebaseapp.com${req.originalUrl}`;
+      const fetchHeaders: Record<string, string> = {};
+      for (const [key, val] of Object.entries(req.headers)) {
+        if (typeof val === "string" && key !== "host") fetchHeaders[key] = val;
+      }
+      const fetchOpts: RequestInit = {
+        method: req.method,
+        headers: fetchHeaders,
+        redirect: "manual",
+      };
+      if (req.method !== "GET" && req.method !== "HEAD" && req.body) {
+        fetchOpts.body = JSON.stringify(req.body);
+      }
+      const upstream = await fetch(targetUrl, fetchOpts);
+      // Forward status and headers
+      res.status(upstream.status);
+      upstream.headers.forEach((val, key) => {
+        if (!["transfer-encoding", "content-encoding", "connection"].includes(key.toLowerCase())) {
+          res.setHeader(key, val);
+        }
+      });
+      const body = await upstream.arrayBuffer();
+      res.end(Buffer.from(body));
+    } catch (err: any) {
+      log.error(`Firebase auth proxy error: ${err.message}`);
+      res.status(502).send("Auth proxy error");
+    }
+  });
+
   // API routes
   registerRoutes(app, db, botManager, agentRegistry);
 

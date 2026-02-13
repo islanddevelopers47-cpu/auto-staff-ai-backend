@@ -1,5 +1,5 @@
 services:
-  auto-staff-ai:
+  claw-staffer:
     build: .
     ports:
       - "${PORT:-3000}:3000"

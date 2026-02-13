@@ -3,7 +3,7 @@ import { generateId } from "../utils/crypto.js";
 
 export interface Session {
   id: string;
-  bot_id: string;
+  bot_id: string | null;
   chat_id: string;
   chat_type: "private" | "group" | "supergroup" | "channel";
   agent_id: string | null;
@@ -25,15 +25,22 @@ export interface Message {
 
 export function findOrCreateSession(
   db: Database.Database,
-  botId: string,
+  botId: string | null,
   chatId: string,
   chatType: string,
   agentId?: string | null,
   title?: string
 ): Session {
-  const existing = db
-    .prepare("SELECT * FROM sessions WHERE bot_id = ? AND chat_id = ?")
-    .get(botId, chatId) as Session | undefined;
+  let existing: Session | undefined;
+  if (botId) {
+    existing = db
+      .prepare("SELECT * FROM sessions WHERE bot_id = ? AND chat_id = ?")
+      .get(botId, chatId) as Session | undefined;
+  } else {
+    existing = db
+      .prepare("SELECT * FROM sessions WHERE bot_id IS NULL AND chat_id = ?")
+      .get(chatId) as Session | undefined;
+  }
 
   if (existing) return existing;
 
@@ -41,7 +48,7 @@ export function findOrCreateSession(
   db.prepare(
     `INSERT INTO sessions (id, bot_id, chat_id, chat_type, agent_id, title)
      VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, botId, chatId, chatType, agentId ?? null, title ?? null);
+  ).run(id, botId ?? null, chatId, chatType, agentId ?? null, title ?? null);
 
   return db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as Session;
 }

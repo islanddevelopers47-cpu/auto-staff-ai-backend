@@ -1,6 +1,6 @@
 import { createLogger } from "../utils/logger.js";
 import { getEnv } from "../config/env.js";
-import { getAnyApiKeyForProvider, getApiKeyForBot } from "../database/api-keys.js";
+import { getAnyApiKeyForProvider, getApiKeyForBot, getRawApiKey } from "../database/api-keys.js";
 import type Database from "better-sqlite3";
 
 const log = createLogger("model-providers");
@@ -29,7 +29,7 @@ export interface ChatCompletionResult {
   finishReason?: string;
 }
 
-export type ProviderName = "openai" | "anthropic" | "google" | "ollama";
+export type ProviderName = "openai" | "anthropic" | "google" | "ollama" | "grok";
 
 interface ProviderConfig {
   apiKey?: string;
@@ -47,6 +47,8 @@ function getProviderConfig(provider: ProviderName): ProviderConfig {
       return { apiKey: env.GOOGLE_AI_API_KEY, baseUrl: "https://generativelanguage.googleapis.com" };
     case "ollama":
       return { baseUrl: env.OLLAMA_BASE_URL ?? "http://localhost:11434" };
+    case "grok":
+      return { apiKey: env.XAI_API_KEY, baseUrl: "https://api.x.ai/v1" };
   }
 }
 
@@ -64,6 +66,8 @@ export async function chatCompletion(
       return googleCompletion(options, apiKeyOverride);
     case "ollama":
       return ollamaCompletion(options);
+    case "grok":
+      return grokCompletion(options, apiKeyOverride);
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }
@@ -271,12 +275,58 @@ async function ollamaCompletion(
   };
 }
 
+async function grokCompletion(
+  options: ChatCompletionOptions,
+  apiKeyOverride?: string
+): Promise<ChatCompletionResult> {
+  const config = getProviderConfig("grok");
+  const apiKey = apiKeyOverride ?? config.apiKey;
+  if (!apiKey) throw new Error("xAI (Grok) API key not configured");
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    log.error(`Grok API error ${response.status}: ${body}`);
+    throw new Error(`Grok API error: ${response.status} ${body}`);
+  }
+
+  const data = (await response.json()) as any;
+  const choice = data.choices?.[0];
+
+  return {
+    content: choice?.message?.content ?? "",
+    model: data.model ?? options.model,
+    usage: data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens,
+        }
+      : undefined,
+    finishReason: choice?.finish_reason,
+  };
+}
+
 export function getAvailableProviders(): { name: ProviderName; configured: boolean }[] {
   const env = getEnv();
   return [
     { name: "openai", configured: !!env.OPENAI_API_KEY },
     { name: "anthropic", configured: !!env.ANTHROPIC_API_KEY },
     { name: "google", configured: !!env.GOOGLE_AI_API_KEY },
+    { name: "grok", configured: !!env.XAI_API_KEY },
     { name: "ollama", configured: !!env.OLLAMA_BASE_URL },
   ];
 }
@@ -300,6 +350,10 @@ export function getAvailableProvidersWithDb(
     {
       name: "google",
       configured: !!env.GOOGLE_AI_API_KEY || !!getAnyApiKeyForProvider(db, "google"),
+    },
+    {
+      name: "grok",
+      configured: !!env.XAI_API_KEY || !!getAnyApiKeyForProvider(db, "grok"),
     },
     { name: "ollama", configured: !!env.OLLAMA_BASE_URL },
   ];
@@ -328,6 +382,7 @@ export function resolveApiKeyForBot(
     case "openai": return env.OPENAI_API_KEY || undefined;
     case "anthropic": return env.ANTHROPIC_API_KEY || undefined;
     case "google": return env.GOOGLE_AI_API_KEY || undefined;
+    case "grok": return env.XAI_API_KEY || undefined;
     default: return undefined;
   }
 }
@@ -342,11 +397,60 @@ export function findFallbackProvider(
   botId: string,
   excludeProvider?: ProviderName
 ): { provider: ProviderName; model: string; apiKey: string } | undefined {
-  const candidates: ProviderName[] = ["openai", "anthropic", "google", "ollama"];
+  const candidates: ProviderName[] = ["openai", "anthropic", "google", "grok", "ollama"];
   for (const p of candidates) {
     if (p === excludeProvider) continue;
     if (p === "ollama") continue; // skip ollama as fallback (needs local setup)
     const key = resolveApiKeyForBot(db, botId, p);
+    if (key) {
+      const models = getDefaultModels(p);
+      return { provider: p, model: models[0], apiKey: key };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve API key for a provider given a user ID (no bot context).
+ * Priority: user's DB key > any DB key > env var.
+ */
+export function resolveApiKeyForUser(
+  db: Database.Database,
+  userId: string,
+  provider: ProviderName
+): string | undefined {
+  // 1. Try this user's key
+  const userKey = getRawApiKey(db, userId, provider);
+  if (userKey) return userKey;
+
+  // 2. Try any user's key
+  const anyKey = getAnyApiKeyForProvider(db, provider);
+  if (anyKey) return anyKey;
+
+  // 3. Fall back to env var
+  const env = getEnv();
+  switch (provider) {
+    case "openai": return env.OPENAI_API_KEY || undefined;
+    case "anthropic": return env.ANTHROPIC_API_KEY || undefined;
+    case "google": return env.GOOGLE_AI_API_KEY || undefined;
+    case "grok": return env.XAI_API_KEY || undefined;
+    default: return undefined;
+  }
+}
+
+/**
+ * Find a fallback provider for a user when the preferred provider has no key.
+ */
+export function findFallbackProviderForUser(
+  db: Database.Database,
+  userId: string,
+  excludeProvider?: ProviderName
+): { provider: ProviderName; model: string; apiKey: string } | undefined {
+  const candidates: ProviderName[] = ["openai", "anthropic", "google", "grok", "ollama"];
+  for (const p of candidates) {
+    if (p === excludeProvider) continue;
+    if (p === "ollama") continue;
+    const key = resolveApiKeyForUser(db, userId, p);
     if (key) {
       const models = getDefaultModels(p);
       return { provider: p, model: models[0], apiKey: key };
@@ -368,6 +472,8 @@ export function getDefaultModels(provider: ProviderName): string[] {
       ];
     case "google":
       return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"];
+    case "grok":
+      return ["grok-3", "grok-3-mini", "grok-2", "grok-2-mini"];
     case "ollama":
       return ["llama3.2", "llama3.1", "mistral", "codellama", "phi3"];
   }
