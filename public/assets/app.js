@@ -340,7 +340,7 @@ const MODELS = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
   google: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-  ollama: ['llama3.2', 'llama3.1', 'mistral', 'codellama']
+  grok: ['grok-3', 'grok-3-mini', 'grok-2', 'grok-2-mini']
 };
 
 document.getElementById('agent-provider').addEventListener('change', () => {
