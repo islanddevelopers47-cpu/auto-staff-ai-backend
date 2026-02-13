@@ -821,6 +821,13 @@
     </div>
   </div>
 
-  <script src="/assets/app.js?v=16"></script>
+  <script>
+    // Set this to the Railway backend URL for Netlify deployment (WebSocket can't be proxied by Netlify)
+    // When running locally or on Railway directly, leave empty to use same-origin.
+    window.BACKEND_URL = window.location.hostname.includes('netlify.app')
+      ? 'https://claw-staffer-production.up.railway.app'
+      : '';
+  </script>
+  <script src="/assets/app.js?v=17"></script>
 </body>
 </html>
