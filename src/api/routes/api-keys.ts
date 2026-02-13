@@ -31,7 +31,7 @@ export function createApiKeysRouter(db: Database.Database): Router {
       return;
     }
 
-    const validProviders = ["openai", "anthropic", "google"];
+    const validProviders = ["openai", "anthropic", "google", "grok"];
     if (!validProviders.includes(provider.toLowerCase())) {
       res.status(400).json({
         error: `Invalid provider. Must be one of: ${validProviders.join(", ")}`,
@@ -106,6 +106,12 @@ async function testProviderKey(provider: string, apiKey: string): Promise<boolea
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
       );
+      return res.ok;
+    }
+    case "grok": {
+      const res = await fetch("https://api.x.ai/v1/models", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
       return res.ok;
     }
     default:
