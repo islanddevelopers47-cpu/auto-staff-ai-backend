@@ -66,11 +66,9 @@ export async function runAgent(
   // Build messages array for the LLM
   let systemPrompt = buildSystemPrompt(agent, input);
 
-  // Add integration tools context if user has connected accounts
-  if (input.userId) {
-    const toolsPrompt = buildIntegrationToolsPrompt(db, input.userId);
-    if (toolsPrompt) systemPrompt += toolsPrompt;
-  }
+  // Add tools context (web tools always available; integration tools if user has connected accounts)
+  const toolsPrompt = buildIntegrationToolsPrompt(db, input.userId || "");
+  if (toolsPrompt) systemPrompt += toolsPrompt;
 
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -108,11 +106,11 @@ export async function runAgent(
     let finalContent = result.content;
 
     // Check for tool calls and execute them (max 3 rounds)
-    if (input.userId) {
+    {
       let toolRound = 0;
       let currentContent = result.content;
       while (toolRound < 3) {
-        const { results: toolResults, hasTools } = await executeToolCalls(db, input.userId, currentContent);
+        const { results: toolResults, hasTools } = await executeToolCalls(db, input.userId || "", currentContent);
         if (!hasTools) break;
 
         // Add tool results to conversation and get follow-up

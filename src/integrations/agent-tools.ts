@@ -9,6 +9,7 @@ import { getEnv } from "../config/env.js";
 import { resolveIntegrationCred } from "../database/integration-config.js";
 import { updateAccessToken } from "../database/connected-accounts.js";
 import { createLogger } from "../utils/logger.js";
+import { webSearch, webFetch } from "./web-search.js";
 
 const log = createLogger("agent-tools");
 
@@ -33,11 +34,17 @@ export function buildIntegrationToolsPrompt(db: Database.Database, userId: strin
   const env = getEnv();
   const dockerHost = resolveIntegrationCred(db, "docker_host", env.DOCKER_HOST);
 
-  if (!ghAccount && !gdAccount && !vcAccount && !ntAccount && !dockerHost) return "";
-
-  let prompt = "\n\n---\n\n# Integration Tools\n\n";
-  prompt += "You have access to file management tools. To use a tool, output the exact syntax shown below.\n";
+  let prompt = "\n\n---\n\n# Tools\n\n";
+  prompt += "You have access to tools. To use a tool, output the exact syntax shown below.\n";
   prompt += "The system will execute the tool and provide the result.\n\n";
+
+  // Web tools — always available
+  prompt += "## Web Search & Browse\n\n";
+  prompt += "Available tools:\n";
+  prompt += "- `[[TOOL:web_search|query]]` — Search the web for real-time information. Returns top results with titles, URLs, and snippets.\n";
+  prompt += "- `[[TOOL:web_fetch|url]]` — Fetch and read the text content of a web page.\n\n";
+  prompt += "Use web_search when the user asks about current events, prices, news, weather, or anything that requires up-to-date information.\n";
+  prompt += "Use web_fetch to read the full content of a specific URL from search results.\n\n";
 
   if (ghAccount) {
     prompt += `## GitHub (connected as @${ghAccount.account_name})\n\n`;
@@ -390,6 +397,34 @@ async function executeTool(
       }
       default:
         return `Unknown Docker tool: ${action}`;
+    }
+  }
+
+  // Web tools — always available, no account needed
+  if (action === "web_search") {
+    const query = params[0];
+    if (!query) return "Error: search query is required";
+    try {
+      const results = await webSearch(query);
+      if (results.length === 0) return `No results found for: ${query}`;
+      const list = results.map((r, i) =>
+        `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`
+      );
+      return `Web search results for "${query}":\n\n${list.join("\n\n")}`;
+    } catch (err: any) {
+      return `Search error: ${err.message}`;
+    }
+  }
+
+  if (action === "web_fetch") {
+    const targetUrl = params[0];
+    if (!targetUrl) return "Error: URL is required";
+    try {
+      const content = await webFetch(targetUrl);
+      if (!content) return `No readable content found at ${targetUrl}`;
+      return `Content from ${targetUrl}:\n\n${content}`;
+    } catch (err: any) {
+      return `Fetch error: ${err.message}`;
     }
   }
 
