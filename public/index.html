@@ -276,6 +276,12 @@
                 <select id="agent-model"></select>
               </div>
               <div class="field">
+                <label for="agent-prompt-preset">System Prompt Preset</label>
+                <select id="agent-prompt-preset">
+                  <option value="custom">Custom (write your own)</option>
+                </select>
+              </div>
+              <div class="field">
                 <label for="agent-prompt">System Prompt</label>
                 <textarea id="agent-prompt" rows="6" placeholder="You are a helpful assistant..."></textarea>
               </div>
@@ -816,6 +822,7 @@
       ? 'https://claw-staffer-production.up.railway.app'
       : '';
   </script>
-  <script src="/assets/app.js?v=17"></script>
+  <script src="/assets/system-prompts.js"></script>
+  <script src="/assets/app.js?v=18"></script>
 </body>
 </html>

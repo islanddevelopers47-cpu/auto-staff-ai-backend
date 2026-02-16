@@ -102,23 +102,6 @@ export function getRawApiKey(
 }
 
 /**
- * Get the first available API key for a provider from any user.
- * Used as fallback when no specific user context is available (e.g. Telegram inbound).
- */
-export function getAnyApiKeyForProvider(
-  db: Database.Database,
-  provider: string
-): string | undefined {
-  const row = db
-    .prepare(
-      "SELECT api_key FROM api_keys WHERE provider = ? ORDER BY created_at ASC LIMIT 1"
-    )
-    .get(provider.toLowerCase()) as { api_key: string } | undefined;
-
-  return row?.api_key;
-}
-
-/**
  * Get API key for a specific bot's owner + provider.
  * Looks up the bot's user_id, then finds their key for that provider.
  */

@@ -349,7 +349,24 @@ document.getElementById('agent-provider').addEventListener('change', () => {
   sel.innerHTML = (MODELS[provider] || []).map(m => `<option value="${m}">${m}</option>`).join('');
 });
 
+// Populate system prompt presets dropdown
+function populateSystemPromptPresets() {
+  const select = document.getElementById('agent-prompt-preset');
+  select.innerHTML = Object.entries(SYSTEM_PROMPT_PRESETS)
+    .map(([key, data]) => `<option value="${key}">${data.label}</option>`)
+    .join('');
+}
+
+// Handle preset selection
+document.getElementById('agent-prompt-preset').addEventListener('change', (e) => {
+  const preset = SYSTEM_PROMPT_PRESETS[e.target.value];
+  if (preset) {
+    document.getElementById('agent-prompt').value = preset.prompt;
+  }
+});
+
 document.getElementById('add-agent-btn').addEventListener('click', () => {
+  populateSystemPromptPresets();
   document.getElementById('agent-provider').dispatchEvent(new Event('change'));
   document.getElementById('add-agent-modal').style.display = '';
 });

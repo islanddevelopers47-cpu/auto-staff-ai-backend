@@ -26,12 +26,13 @@ export function createApiKeysRouter(db: Database.Database): Router {
       res.status(400).json({ error: "provider is required" });
       return;
     }
-    if (!apiKey || typeof apiKey !== "string") {
+    const validProviders = ["openai", "anthropic", "google", "grok", "ollama"];
+
+    // Ollama doesn't need an API key — it stores the base URL instead
+    if (provider.toLowerCase() !== "ollama" && (!apiKey || typeof apiKey !== "string")) {
       res.status(400).json({ error: "apiKey is required" });
       return;
     }
-
-    const validProviders = ["openai", "anthropic", "google", "grok"];
     if (!validProviders.includes(provider.toLowerCase())) {
       res.status(400).json({
         error: `Invalid provider. Must be one of: ${validProviders.join(", ")}`,
@@ -59,13 +60,19 @@ export function createApiKeysRouter(db: Database.Database): Router {
   router.post("/api-keys/test", authMiddleware, async (req, res) => {
     const { provider, apiKey } = req.body;
 
-    if (!provider || !apiKey) {
-      res.status(400).json({ error: "provider and apiKey are required" });
+    if (!provider) {
+      res.status(400).json({ error: "provider is required" });
+      return;
+    }
+
+    // Ollama doesn't need an API key
+    if (provider.toLowerCase() !== "ollama" && !apiKey) {
+      res.status(400).json({ error: "apiKey is required" });
       return;
     }
 
     try {
-      const valid = await testProviderKey(provider.toLowerCase(), apiKey.trim());
+      const valid = await testProviderKey(provider.toLowerCase(), apiKey?.trim() ?? "");
       res.json({ valid, provider });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -112,6 +119,12 @@ async function testProviderKey(provider: string, apiKey: string): Promise<boolea
       const res = await fetch("https://api.x.ai/v1/models", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
+      return res.ok;
+    }
+    case "ollama": {
+      // Ollama runs locally — just ping the tags endpoint
+      const baseUrl = apiKey || "http://localhost:11434";
+      const res = await fetch(`${baseUrl}/api/tags`);
       return res.ok;
     }
     default:

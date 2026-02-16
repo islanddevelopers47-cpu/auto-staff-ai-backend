@@ -1,6 +1,6 @@
 import { createLogger } from "../utils/logger.js";
 import { getEnv } from "../config/env.js";
-import { getAnyApiKeyForProvider, getApiKeyForBot, getRawApiKey } from "../database/api-keys.js";
+import { getApiKeyForBot, getRawApiKey } from "../database/api-keys.js";
 import type Database from "better-sqlite3";
 
 const log = createLogger("model-providers");
@@ -38,17 +38,19 @@ interface ProviderConfig {
 
 function getProviderConfig(provider: ProviderName): ProviderConfig {
   const env = getEnv();
+  // API keys are NEVER read from env vars — each user must supply their own via the UI.
+  // Only base URLs come from config.
   switch (provider) {
     case "openai":
-      return { apiKey: env.OPENAI_API_KEY, baseUrl: "https://api.openai.com/v1" };
+      return { baseUrl: "https://api.openai.com/v1" };
     case "anthropic":
-      return { apiKey: env.ANTHROPIC_API_KEY, baseUrl: "https://api.anthropic.com" };
+      return { baseUrl: "https://api.anthropic.com" };
     case "google":
-      return { apiKey: env.GOOGLE_AI_API_KEY, baseUrl: "https://generativelanguage.googleapis.com" };
+      return { baseUrl: "https://generativelanguage.googleapis.com" };
     case "ollama":
       return { baseUrl: env.OLLAMA_BASE_URL ?? "http://localhost:11434" };
     case "grok":
-      return { apiKey: env.XAI_API_KEY, baseUrl: "https://api.x.ai/v1" };
+      return { baseUrl: "https://api.x.ai/v1" };
   }
 }
 
@@ -322,69 +324,56 @@ async function grokCompletion(
 
 export function getAvailableProviders(): { name: ProviderName; configured: boolean }[] {
   const env = getEnv();
+  // Without a user context we can only confirm Ollama (no API key needed)
   return [
-    { name: "openai", configured: !!env.OPENAI_API_KEY },
-    { name: "anthropic", configured: !!env.ANTHROPIC_API_KEY },
-    { name: "google", configured: !!env.GOOGLE_AI_API_KEY },
-    { name: "grok", configured: !!env.XAI_API_KEY },
+    { name: "openai", configured: false },
+    { name: "anthropic", configured: false },
+    { name: "google", configured: false },
+    { name: "grok", configured: false },
     { name: "ollama", configured: !!env.OLLAMA_BASE_URL },
   ];
 }
 
 /**
- * Check provider availability considering both DB-stored keys and env vars.
+ * Check provider availability for a specific user — only their own DB keys count.
  */
 export function getAvailableProvidersWithDb(
-  db: Database.Database
+  db: Database.Database,
+  userId?: string
 ): { name: ProviderName; configured: boolean }[] {
   const env = getEnv();
   return [
     {
       name: "openai",
-      configured: !!env.OPENAI_API_KEY || !!getAnyApiKeyForProvider(db, "openai"),
+      configured: userId ? !!getRawApiKey(db, userId, "openai") : false,
     },
     {
       name: "anthropic",
-      configured: !!env.ANTHROPIC_API_KEY || !!getAnyApiKeyForProvider(db, "anthropic"),
+      configured: userId ? !!getRawApiKey(db, userId, "anthropic") : false,
     },
     {
       name: "google",
-      configured: !!env.GOOGLE_AI_API_KEY || !!getAnyApiKeyForProvider(db, "google"),
+      configured: userId ? !!getRawApiKey(db, userId, "google") : false,
     },
     {
       name: "grok",
-      configured: !!env.XAI_API_KEY || !!getAnyApiKeyForProvider(db, "grok"),
+      configured: userId ? !!getRawApiKey(db, userId, "grok") : false,
     },
     { name: "ollama", configured: !!env.OLLAMA_BASE_URL },
   ];
 }
 
 /**
- * Resolve the best API key for a provider given a bot ID.
- * Priority: bot owner's DB key > any DB key > env var.
+ * Resolve the API key for a provider given a bot ID.
+ * ONLY returns the bot owner's own key — never another user's.
  */
 export function resolveApiKeyForBot(
   db: Database.Database,
   botId: string,
   provider: ProviderName
 ): string | undefined {
-  // 1. Try the bot owner's key
-  const botOwnerKey = getApiKeyForBot(db, botId, provider);
-  if (botOwnerKey) return botOwnerKey;
-
-  // 2. Try any user's key in the DB
-  const anyKey = getAnyApiKeyForProvider(db, provider);
-  if (anyKey) return anyKey;
-
-  // 3. Fall back to env var
-  const env = getEnv();
-  switch (provider) {
-    case "openai": return env.OPENAI_API_KEY || undefined;
-    case "anthropic": return env.ANTHROPIC_API_KEY || undefined;
-    case "google": return env.GOOGLE_AI_API_KEY || undefined;
-    case "grok": return env.XAI_API_KEY || undefined;
-    default: return undefined;
-  }
+  // Only the bot owner's key — no cross-user fallback, no env var fallback
+  return getApiKeyForBot(db, botId, provider);
 }
 
 /**
@@ -412,30 +401,15 @@ export function findFallbackProvider(
 
 /**
  * Resolve API key for a provider given a user ID (no bot context).
- * Priority: user's DB key > any DB key > env var.
+ * ONLY returns this user's own key — never another user's.
  */
 export function resolveApiKeyForUser(
   db: Database.Database,
   userId: string,
   provider: ProviderName
 ): string | undefined {
-  // 1. Try this user's key
-  const userKey = getRawApiKey(db, userId, provider);
-  if (userKey) return userKey;
-
-  // 2. Try any user's key
-  const anyKey = getAnyApiKeyForProvider(db, provider);
-  if (anyKey) return anyKey;
-
-  // 3. Fall back to env var
-  const env = getEnv();
-  switch (provider) {
-    case "openai": return env.OPENAI_API_KEY || undefined;
-    case "anthropic": return env.ANTHROPIC_API_KEY || undefined;
-    case "google": return env.GOOGLE_AI_API_KEY || undefined;
-    case "grok": return env.XAI_API_KEY || undefined;
-    default: return undefined;
-  }
+  // Only this user's key — no cross-user fallback, no env var fallback
+  return getRawApiKey(db, userId, provider);
 }
 
 /**

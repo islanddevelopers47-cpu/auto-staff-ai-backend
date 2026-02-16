@@ -9,9 +9,6 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(8).default("change-me-to-a-random-secret-string"),
   ADMIN_PASSWORD: z.string().min(4).default("admin123"),
   DATABASE_PATH: z.string().default("./data/autostaff.db"),
-  OPENAI_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  GOOGLE_AI_API_KEY: z.string().optional(),
   OLLAMA_BASE_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   PUBLIC_URL: z.string().optional(),
@@ -27,7 +24,6 @@ const EnvSchema = z.object({
   VERCEL_CLIENT_SECRET: z.string().optional(),
   NETLIFY_CLIENT_ID: z.string().optional(),
   NETLIFY_CLIENT_SECRET: z.string().optional(),
-  XAI_API_KEY: z.string().optional(),
   DOCKER_HOST: z.string().optional(),
 });
 

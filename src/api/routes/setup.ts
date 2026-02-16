@@ -15,7 +15,8 @@ export function createSetupRouter(
 
   // Get setup status — is the system configured?
   router.get("/setup/status", authMiddleware, (_req, res) => {
-    const providers = getAvailableProvidersWithDb(db);
+    const userId = (_req as any).user?.userId as string | undefined;
+    const providers = getAvailableProvidersWithDb(db, userId);
     const hasProvider = providers.some((p) => p.configured);
     const bots = listBots(db);
     const hasBots = bots.length > 0;
