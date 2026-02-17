@@ -587,6 +587,25 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   }
 });
 
+// Enterprise demo buttons - trigger Cal.com booking
+document.getElementById('get-enterprise-demo-btn').addEventListener('click', () => {
+  if (window.Cal) {
+    Cal("openModal", {
+      calLink: "clawstaffer/30min",
+      config: { layout: "month_view" }
+    });
+  }
+});
+
+document.getElementById('request-enterprise-demo-btn').addEventListener('click', () => {
+  if (window.Cal) {
+    Cal("openModal", {
+      calLink: "clawstaffer/30min",
+      config: { layout: "month_view" }
+    });
+  }
+});
+
 document.getElementById('logout-btn').addEventListener('click', logout);
 
 // --- API Keys ---

@@ -5,6 +5,47 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Claw Staffer — Dashboard</title>
   <link rel="stylesheet" href="/assets/style.css?v=16">
+  <!-- Cal.com Embed Script -->
+  <script>
+    (function (C, A, L) {
+      let p = function (a, ar) {
+        a.q.push(ar);
+      };
+      let d = C.document;
+      C.Cal =
+        C.Cal ||
+        function () {
+          let cal = C.Cal;
+          let ar = arguments;
+          if (!cal.loaded) {
+            cal.ns = {};
+            cal.q = cal.q || [];
+            d.head.appendChild(d.createElement("script")).src = A;
+            cal.loaded = true;
+          }
+          if (ar[0] === L) {
+            const api = function () {
+              p(api, arguments);
+            };
+            const namespace = ar[1];
+            api.q = api.q || [];
+            typeof namespace === "string" ? (cal.ns[namespace] = api) && p(api, ar) : p(cal, ar);
+            return;
+          }
+          p(cal, ar);
+        };
+    })(window, "https://app.cal.com/embed/embed.js", "init");
+    Cal("init", { origin: "https://cal.com" });
+
+    // Initialize Cal.com floating button
+    Cal("floatingButton", {
+      calLink: "clawstaffer/30min",
+      config: { layout: "month_view" },
+      buttonColor: "#ff8727",
+      buttonText: "Get a Demo"
+    });
+    Cal("ui", { hideEventTypeDetails: false, layout: "month_view" });
+  </script>
   <!-- Firebase JS SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
@@ -76,6 +117,17 @@
           <button type="submit" class="btn btn-primary" style="width:100%">Admin Login</button>
           <p id="login-error" class="error" style="display:none"></p>
         </form>
+
+        <!-- Enterprise Demo Section -->
+        <div class="auth-divider" style="margin-top:24px"><span>enterprise</span></div>
+        <div style="display:flex;gap:12px;margin-top:16px">
+          <button id="get-enterprise-demo-btn" class="btn" style="flex:1;background:#ff8727;color:white;border:none" type="button">
+            Get Enterprise Demo
+          </button>
+          <button id="request-enterprise-demo-btn" class="btn" style="flex:1;background:#ff8727;color:white;border:none" type="button">
+            Request Enterprise Demo
+          </button>
+        </div>
       </div>
     </div>
 
