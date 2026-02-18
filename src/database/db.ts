@@ -301,4 +301,38 @@ const MIGRATIONS = [
       CREATE INDEX idx_agent_tasks_user ON agent_tasks(user_id, status);
     `,
   },
+  {
+    name: "007_projects",
+    sql: `
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived')),
+        integrations TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_projects_user ON projects(user_id, status);
+
+      CREATE TABLE project_agents (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL,
+        added_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_project_agents_project ON project_agents(project_id);
+      CREATE UNIQUE INDEX idx_project_agents_unique ON project_agents(project_id, agent_id);
+
+      CREATE TABLE project_messages (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        agent_id TEXT,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_project_messages_project ON project_messages(project_id);
+    `,
+  },
 ];

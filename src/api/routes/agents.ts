@@ -48,6 +48,15 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
         return;
       }
 
+      // Check for duplicate agent name
+      const existingAgent = db.prepare(
+        "SELECT id FROM agents WHERE user_id = ? AND LOWER(name) = LOWER(?)"
+      ).get(req.user!.userId, body.name);
+      if (existingAgent) {
+        res.status(400).json({ error: "An agent with this name already exists. Please choose a unique name." });
+        return;
+      }
+
       const agent = createAgent(db, {
         userId: req.user!.userId,
         name: body.name,
@@ -83,7 +92,19 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
     const body = req.body as Record<string, unknown>;
     const updates: Record<string, unknown> = {};
 
-    if (body.name !== undefined) updates.name = body.name;
+    // Check for duplicate name if updating name
+    if (body.name !== undefined && body.name !== agent.name) {
+      const existingAgent = db.prepare(
+        "SELECT id FROM agents WHERE user_id = ? AND LOWER(name) = LOWER(?) AND id != ?"
+      ).get(agent.user_id, body.name, agentId);
+      if (existingAgent) {
+        res.status(400).json({ error: "An agent with this name already exists. Please choose a unique name." });
+        return;
+      }
+      updates.name = body.name;
+    } else if (body.name !== undefined) {
+      updates.name = body.name;
+    }
     if (body.description !== undefined) updates.description = body.description;
     if (body.system_prompt !== undefined) updates.system_prompt = body.system_prompt;
     if (body.systemPrompt !== undefined) updates.system_prompt = body.systemPrompt;

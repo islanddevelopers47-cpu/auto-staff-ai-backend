@@ -100,7 +100,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     if (btn.dataset.tab === 'agents') loadAgents();
     if (btn.dataset.tab === 'chat') loadChatBots();
     if (btn.dataset.tab === 'agent-chat') loadAgentChatList();
-    if (btn.dataset.tab === 'agent-tasks') loadTasks();
+    if (btn.dataset.tab === 'agent-projects') loadProjects();
     if (btn.dataset.tab === 'integrations') loadIntegrations();
     if (btn.dataset.tab === 'settings') { loadApiKeys(); loadIntegrationConfig(); }
   });
@@ -856,8 +856,11 @@ document.getElementById('fb-register-btn').addEventListener('click', async () =>
 // Check available providers when login screen loads
 checkAuthProviders();
 
-// --- Agent Tasks ---
+// --- Agent Projects ---
 let _cachedAgents = null;
+let _currentProject = null;
+let _currentProjectAgent = null; // null = all agents, or { id, name }
+let _projectMessages = [];
 
 async function getAgentsList() {
   if (_cachedAgents) return _cachedAgents;
@@ -867,232 +870,323 @@ async function getAgentsList() {
   return data.agents;
 }
 
-async function loadTasks() {
-  try {
-    const status = document.getElementById('task-filter-status').value;
-    const url = status ? `/tasks?status=${status}` : '/tasks';
-    const data = await api(url);
-    const list = document.getElementById('tasks-list');
-
-    if (!data.tasks.length) {
-      list.innerHTML = '<div class="card" style="text-align:center;color:var(--text-dim);padding:2rem">No tasks yet. Click "+ New Task" to create one.</div>';
-      return;
-    }
-
-    list.innerHTML = data.tasks.map(t => {
-      const intChips = (t.integrations || []).map(i => `<span class="task-integration-chip">${i}</span>`).join('');
-      const agentChips = (t.assignments || []).map(a => `<span class="task-agent-chip">${a.agent_name}</span>`).join('');
-      return `<div class="task-card" onclick="openTaskDetail('${t.id}')">
-        <div class="task-card-header">
-          <span class="task-card-title">${escHtml(t.title)}</span>
-          <span class="status-pill status-pill-${t.status}">${t.status}</span>
-        </div>
-        <div class="task-card-meta">
-          <span class="priority-badge priority-${t.priority}">${t.priority}</span>
-          <span>${t.assignments?.length || 0} agent${t.assignments?.length !== 1 ? 's' : ''}</span>
-          <span>${new Date(t.created_at).toLocaleDateString()}</span>
-          ${intChips ? '<span>'+intChips+'</span>' : ''}
-        </div>
-        ${agentChips ? '<div class="task-agents-chips">' + agentChips + '</div>' : ''}
-      </div>`;
-    }).join('');
-  } catch (err) { console.error('Tasks load error:', err); }
-}
-
 function escHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
 }
 
-document.getElementById('task-filter-status').addEventListener('change', loadTasks);
-document.getElementById('task-refresh-btn').addEventListener('click', loadTasks);
+async function loadProjects() {
+  try {
+    const status = document.getElementById('project-filter-status').value;
+    const url = status ? `/projects?status=${status}` : '/projects';
+    const data = await api(url);
+    const grid = document.getElementById('projects-grid');
 
-// Open New Task modal
-document.getElementById('new-task-btn').addEventListener('click', async () => {
-  document.getElementById('task-modal-title').textContent = 'New Task';
-  document.getElementById('task-submit-btn').textContent = 'Create Task';
-  document.getElementById('task-edit-id').value = '';
-  document.getElementById('task-title').value = '';
-  document.getElementById('task-desc').value = '';
-  document.getElementById('task-priority').value = 'medium';
-  // Uncheck all integrations
-  document.querySelectorAll('#task-integrations-list input').forEach(cb => cb.checked = false);
-  // Load agents
-  await populateTaskAgents([]);
-  document.getElementById('task-modal').style.display = '';
+    if (!data.projects || !data.projects.length) {
+      grid.innerHTML = '<div class="card" style="text-align:center;color:var(--text-dim);padding:2rem;grid-column:1/-1">No projects yet. Click "+ Create Project" to start one.</div>';
+      return;
+    }
+
+    grid.innerHTML = data.projects.map(p => {
+      const agentCount = p.agents?.length || 0;
+      const statusColor = p.status === 'active' ? '#4ade80' : p.status === 'completed' ? '#60a5fa' : '#6b7280';
+      return `<div class="card project-card" style="cursor:pointer;transition:transform 0.15s,box-shadow 0.15s" onclick="openProject('${p.id}')" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem">
+          <h3 style="margin:0;font-size:1rem;word-break:break-word">${escHtml(p.title)}</h3>
+          <span style="background:${statusColor};color:#000;font-size:0.7rem;padding:0.15rem 0.4rem;border-radius:4px;font-weight:600">${p.status}</span>
+        </div>
+        <div style="font-size:0.8rem;color:var(--text-dim);display:flex;gap:1rem;flex-wrap:wrap">
+          <span>${agentCount} agent${agentCount !== 1 ? 's' : ''}</span>
+          <span>${new Date(p.created_at).toLocaleDateString()}</span>
+          <span>${p.message_count || 0} messages</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) { console.error('Projects load error:', err); }
+}
+
+document.getElementById('project-filter-status').addEventListener('change', loadProjects);
+document.getElementById('project-refresh-btn').addEventListener('click', loadProjects);
+
+// New Project Modal
+document.getElementById('new-project-btn').addEventListener('click', async () => {
+  document.getElementById('new-project-title').value = '';
+  document.querySelectorAll('#new-project-integrations-list input').forEach(cb => cb.checked = false);
+  await populateNewProjectAgents();
+  document.getElementById('new-project-modal').style.display = '';
 });
 
-async function populateTaskAgents(selectedIds) {
+async function populateNewProjectAgents() {
   const agents = await getAgentsList();
-  const container = document.getElementById('task-agents-list');
+  const container = document.getElementById('new-project-agents-list');
   container.innerHTML = agents.map(a =>
-    `<label class="chip-checkbox"><input type="checkbox" value="${a.id}" ${selectedIds.includes(a.id) ? 'checked' : ''}> ${escHtml(a.name)}</label>`
+    `<label class="chip-checkbox"><input type="checkbox" value="${a.id}" data-name="${escHtml(a.name)}"> ${escHtml(a.name)}</label>`
   ).join('');
 }
 
-// Submit task form (create or update)
-document.getElementById('task-form').addEventListener('submit', async (e) => {
+document.getElementById('new-project-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const editId = document.getElementById('task-edit-id').value;
-  const title = document.getElementById('task-title').value.trim();
-  const description = document.getElementById('task-desc').value.trim();
-  const priority = document.getElementById('task-priority').value;
-  const agentIds = Array.from(document.querySelectorAll('#task-agents-list input:checked')).map(cb => cb.value);
-  const integrations = Array.from(document.querySelectorAll('#task-integrations-list input:checked')).map(cb => cb.value);
+  const title = document.getElementById('new-project-title').value.trim();
+  const agentIds = Array.from(document.querySelectorAll('#new-project-agents-list input:checked')).map(cb => cb.value);
+  const integrations = Array.from(document.querySelectorAll('#new-project-integrations-list input:checked')).map(cb => cb.value);
 
   if (!title) return;
   if (!agentIds.length) { alert('Please select at least one agent.'); return; }
 
   try {
-    if (editId) {
-      await api(`/tasks/${editId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ title, description, priority, integrations })
-      });
-    } else {
-      await api('/tasks', {
-        method: 'POST',
-        body: JSON.stringify({ title, description, priority, agentIds, integrations })
-      });
-    }
-    closeModal('task-modal');
-    loadTasks();
+    const project = await api('/projects', {
+      method: 'POST',
+      body: JSON.stringify({ title, agentIds, integrations })
+    });
+    closeModal('new-project-modal');
+    openProject(project.id);
   } catch (err) { alert('Failed: ' + err.message); }
 });
 
-// Open Task Detail
-async function openTaskDetail(taskId) {
+// Open Project Chat View
+async function openProject(projectId) {
   try {
-    const t = await api(`/tasks/${taskId}`);
-    document.getElementById('task-detail-title').textContent = t.title;
-    document.getElementById('task-detail-meta').innerHTML = `
-      <span class="status-pill status-pill-${t.status}">${t.status}</span>
-      <span class="priority-badge priority-${t.priority}">${t.priority}</span>
-      <span>Created: ${new Date(t.created_at).toLocaleString()}</span>
-      ${t.started_at ? '<span>Started: ' + new Date(t.started_at).toLocaleString() + '</span>' : ''}
-      ${t.completed_at ? '<span>Completed: ' + new Date(t.completed_at).toLocaleString() + '</span>' : ''}
-    `;
-    document.getElementById('task-detail-desc').textContent = t.description || '';
+    const project = await api(`/projects/${projectId}`);
+    _currentProject = project;
+    _currentProjectAgent = null;
+    _projectMessages = project.messages || [];
 
-    const intEl = document.getElementById('task-detail-integrations');
-    if (t.integrations?.length) {
-      intEl.innerHTML = '<strong style="font-size:0.85rem">Integrations:</strong> ' +
-        t.integrations.map(i => `<span class="task-integration-chip">${i}</span>`).join(' ');
-    } else {
-      intEl.innerHTML = '';
-    }
+    // Update UI
+    document.getElementById('projects-list-view').style.display = 'none';
+    document.getElementById('project-chat-view').style.display = '';
+    document.getElementById('project-title').textContent = project.title;
+    
+    const statusBadge = document.getElementById('project-status-badge');
+    statusBadge.textContent = project.status;
+    statusBadge.style.background = project.status === 'active' ? '#4ade80' : project.status === 'completed' ? '#60a5fa' : '#6b7280';
+    statusBadge.style.color = '#000';
 
-    // Agents
-    const agentsEl = document.getElementById('task-detail-agents');
-    if (t.assignments?.length) {
-      agentsEl.innerHTML = t.assignments.map(a => {
-        const stColor = a.status === 'completed' ? '#4ade80' : a.status === 'failed' ? '#f87171' : a.status === 'running' ? '#60a5fa' : '#6b7280';
-        return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--border);font-size:0.85rem">
-          <span style="width:8px;height:8px;border-radius:50%;background:${stColor};flex-shrink:0"></span>
-          <strong style="flex:1">${escHtml(a.agent_name)}</strong>
-          <span class="status-pill status-pill-${a.status}" style="font-size:0.65rem">${a.status}</span>
-          ${a.status === 'pending' && t.status === 'pending' ? `<button class="btn btn-sm btn-danger" style="padding:1px 6px;font-size:0.7rem" onclick="event.stopPropagation();removeTaskAgent('${t.id}','${a.id}')">✕</button>` : ''}
-        </div>
-        ${a.output ? '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.5rem;margin:0.3rem 0 0.5rem 1.2rem;font-size:0.8rem;white-space:pre-wrap;max-height:200px;overflow-y:auto">' + escHtml(a.output).slice(0, 3000) + '</div>' : ''}`;
-      }).join('');
-    } else {
-      agentsEl.innerHTML = '<span style="color:var(--text-dim);font-size:0.85rem">No agents assigned</span>';
-    }
-
-    // Result
-    const resultEl = document.getElementById('task-detail-result');
-    const resultContent = document.getElementById('task-detail-result-content');
-    if (t.result) {
-      resultContent.textContent = t.result;
-      resultEl.style.display = '';
-    } else {
-      resultEl.style.display = 'none';
-    }
-
-    // Action buttons
-    const actionsEl = document.getElementById('task-detail-actions');
-    let btns = '';
-    if (t.status === 'pending') {
-      btns += `<button class="btn btn-primary btn-sm" onclick="runTask('${t.id}')">▶ Run Task</button>`;
-      btns += `<button class="btn btn-sm" onclick="editTask('${t.id}')">Edit</button>`;
-      btns += `<button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">Delete</button>`;
-    } else if (t.status === 'running') {
-      btns += `<button class="btn btn-sm" onclick="cancelTask('${t.id}')">Cancel</button>`;
-    } else {
-      btns += `<button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">Delete</button>`;
-    }
-    actionsEl.innerHTML = btns;
-
-    document.getElementById('task-detail-modal').style.display = '';
-  } catch (err) { alert('Error loading task: ' + err.message); }
+    renderProjectAgentsSidebar();
+    renderProjectMessages();
+    updateProjectChatHeader();
+  } catch (err) { alert('Error opening project: ' + err.message); }
 }
-window.openTaskDetail = openTaskDetail;
+window.openProject = openProject;
 
-async function runTask(taskId) {
-  if (!confirm('Run this task? All assigned agents will execute sequentially.')) return;
-  closeModal('task-detail-modal');
-  try {
-    const runBtn = document.querySelector(`[onclick="runTask('${taskId}')"]`);
-    if (runBtn) { runBtn.textContent = 'Running...'; runBtn.disabled = true; }
-    await api(`/tasks/${taskId}/run`, { method: 'POST' });
-    loadTasks();
-    openTaskDetail(taskId);
-  } catch (err) { alert('Run failed: ' + err.message); loadTasks(); }
+function renderProjectAgentsSidebar() {
+  const container = document.getElementById('project-agents-list');
+  const agents = _currentProject.agents || [];
+  
+  container.innerHTML = agents.map(a => {
+    const isSelected = _currentProjectAgent?.id === a.id;
+    return `<div class="project-agent-item" style="padding:0.5rem;border-radius:6px;cursor:pointer;margin-bottom:0.25rem;background:${isSelected ? 'var(--accent)' : 'transparent'};color:${isSelected ? '#000' : 'var(--text)'};display:flex;align-items:center;gap:0.5rem" onclick="selectProjectAgent('${a.id}','${escHtml(a.name).replace(/'/g, "\\'")}')">
+      <span style="width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0"></span>
+      <span style="flex:1;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name)}</span>
+      <button class="btn btn-sm" style="padding:1px 4px;font-size:0.65rem;opacity:0.7" onclick="event.stopPropagation();removeAgentFromProject('${a.id}')" title="Remove from project">✕</button>
+    </div>`;
+  }).join('') || '<div style="color:var(--text-dim);font-size:0.8rem;text-align:center;padding:1rem">No agents added</div>';
 }
-window.runTask = runTask;
 
-async function editTask(taskId) {
-  closeModal('task-detail-modal');
+function selectProjectAgent(agentId, agentName) {
+  if (_currentProjectAgent?.id === agentId) {
+    _currentProjectAgent = null; // Deselect - go back to all agents
+  } else {
+    _currentProjectAgent = { id: agentId, name: agentName };
+  }
+  renderProjectAgentsSidebar();
+  updateProjectChatHeader();
+  renderProjectMessages();
+}
+window.selectProjectAgent = selectProjectAgent;
+
+function updateProjectChatHeader() {
+  const modeEl = document.getElementById('project-chat-mode');
+  const nameEl = document.getElementById('project-chat-agent-name');
+  const allBtn = document.getElementById('project-chat-all-btn');
+  
+  if (_currentProjectAgent) {
+    modeEl.textContent = 'Chatting with:';
+    nameEl.textContent = _currentProjectAgent.name;
+    allBtn.classList.remove('btn-primary');
+  } else {
+    modeEl.textContent = 'Project Chat';
+    nameEl.textContent = '(All Agents)';
+    allBtn.classList.add('btn-primary');
+  }
+}
+
+function renderProjectMessages() {
+  const container = document.getElementById('project-chat-messages');
+  let messages = _projectMessages;
+  
+  // Filter by agent if one is selected
+  if (_currentProjectAgent) {
+    messages = messages.filter(m => m.agent_id === _currentProjectAgent.id || m.role === 'user');
+  }
+  
+  container.innerHTML = messages.map(m => {
+    const isUser = m.role === 'user';
+    const agentName = m.agent_name || 'Agent';
+    return `<div style="display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'}">
+      <div style="max-width:80%;padding:0.75rem 1rem;border-radius:12px;background:${isUser ? 'var(--accent)' : 'var(--surface)'};color:${isUser ? '#000' : 'var(--text)'}">
+        ${!isUser ? `<div style="font-size:0.7rem;font-weight:600;margin-bottom:0.25rem;color:var(--accent)">@${escHtml(agentName)}</div>` : ''}
+        <div style="font-size:0.9rem;white-space:pre-wrap">${escHtml(m.content)}</div>
+      </div>
+      <div style="font-size:0.65rem;color:var(--text-dim);margin-top:0.2rem">${new Date(m.created_at).toLocaleTimeString()}</div>
+    </div>`;
+  }).join('') || '<div style="text-align:center;color:var(--text-dim);padding:2rem">No messages yet. Start chatting with your agents!</div>';
+  
+  container.scrollTop = container.scrollHeight;
+}
+
+// Project chat form
+document.getElementById('project-chat-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('project-chat-input');
+  const content = input.value.trim();
+  if (!content || !_currentProject) return;
+
+  input.value = '';
+  
+  // Parse @mentions to determine target agents
+  const mentionRegex = /@(\w+)/g;
+  const mentions = [...content.matchAll(mentionRegex)].map(m => m[1].toLowerCase());
+  
+  // Add user message to UI immediately
+  const userMsg = { role: 'user', content, created_at: new Date().toISOString() };
+  _projectMessages.push(userMsg);
+  renderProjectMessages();
+
   try {
-    const t = await api(`/tasks/${taskId}`);
-    document.getElementById('task-modal-title').textContent = 'Edit Task';
-    document.getElementById('task-submit-btn').textContent = 'Save Changes';
-    document.getElementById('task-edit-id').value = t.id;
-    document.getElementById('task-title').value = t.title;
-    document.getElementById('task-desc').value = t.description || '';
-    document.getElementById('task-priority').value = t.priority;
-
-    // Set integrations
-    document.querySelectorAll('#task-integrations-list input').forEach(cb => {
-      cb.checked = (t.integrations || []).includes(cb.value);
+    // Send message to backend
+    const response = await api(`/projects/${_currentProject.id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ 
+        content, 
+        targetAgentId: _currentProjectAgent?.id || null,
+        mentions 
+      })
     });
+    
+    // Add agent responses
+    if (response.messages) {
+      _projectMessages.push(...response.messages);
+      renderProjectMessages();
+    }
+  } catch (err) {
+    console.error('Send message error:', err);
+    alert('Failed to send message: ' + err.message);
+  }
+});
 
-    // Populate agents
-    const assignedIds = (t.assignments || []).map(a => a.agent_id);
-    await populateTaskAgents(assignedIds);
+// Back button
+document.getElementById('project-back-btn').addEventListener('click', () => {
+  document.getElementById('project-chat-view').style.display = 'none';
+  document.getElementById('projects-list-view').style.display = '';
+  _currentProject = null;
+  _currentProjectAgent = null;
+  _projectMessages = [];
+  loadProjects();
+});
 
-    document.getElementById('task-modal').style.display = '';
-  } catch (err) { alert('Error: ' + err.message); }
-}
-window.editTask = editTask;
+// All Agents button
+document.getElementById('project-chat-all-btn').addEventListener('click', () => {
+  _currentProjectAgent = null;
+  renderProjectAgentsSidebar();
+  updateProjectChatHeader();
+  renderProjectMessages();
+});
 
-async function deleteTask(taskId) {
-  if (!confirm('Delete this task? This cannot be undone.')) return;
+// Add Agent to Project
+document.getElementById('add-agent-to-project-btn').addEventListener('click', async () => {
+  const agents = await getAgentsList();
+  const currentAgentIds = (_currentProject.agents || []).map(a => a.id);
+  const availableAgents = agents.filter(a => !currentAgentIds.includes(a.id));
+  
+  const container = document.getElementById('available-agents-list');
+  if (!availableAgents.length) {
+    container.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:1rem">All agents are already in this project.</div>';
+  } else {
+    container.innerHTML = availableAgents.map(a => 
+      `<div style="padding:0.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span>${escHtml(a.name)}</span>
+        <button class="btn btn-sm btn-primary" onclick="addAgentToProject('${a.id}')">Add</button>
+      </div>`
+    ).join('');
+  }
+  document.getElementById('add-agent-modal').style.display = '';
+});
+
+async function addAgentToProject(agentId) {
   try {
-    await api(`/tasks/${taskId}`, { method: 'DELETE' });
-    closeModal('task-detail-modal');
-    loadTasks();
+    await api(`/projects/${_currentProject.id}/agents`, {
+      method: 'POST',
+      body: JSON.stringify({ agentId })
+    });
+    closeModal('add-agent-modal');
+    const project = await api(`/projects/${_currentProject.id}`);
+    _currentProject = project;
+    renderProjectAgentsSidebar();
+  } catch (err) { alert('Failed to add agent: ' + err.message); }
+}
+window.addAgentToProject = addAgentToProject;
+
+async function removeAgentFromProject(agentId) {
+  if (!confirm('Remove this agent from the project?')) return;
+  try {
+    await api(`/projects/${_currentProject.id}/agents/${agentId}`, { method: 'DELETE' });
+    const project = await api(`/projects/${_currentProject.id}`);
+    _currentProject = project;
+    if (_currentProjectAgent?.id === agentId) _currentProjectAgent = null;
+    renderProjectAgentsSidebar();
+    updateProjectChatHeader();
+  } catch (err) { alert('Failed to remove agent: ' + err.message); }
+}
+window.removeAgentFromProject = removeAgentFromProject;
+
+// Project Settings
+document.getElementById('project-settings-btn').addEventListener('click', () => {
+  if (!_currentProject) return;
+  document.getElementById('project-settings-id').value = _currentProject.id;
+  document.getElementById('project-settings-title').value = _currentProject.title;
+  document.getElementById('project-settings-status').value = _currentProject.status;
+  
+  document.querySelectorAll('#project-integrations-list input').forEach(cb => {
+    cb.checked = (_currentProject.integrations || []).includes(cb.value);
+  });
+  
+  document.getElementById('project-settings-modal').style.display = '';
+});
+
+document.getElementById('project-settings-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('project-settings-id').value;
+  const title = document.getElementById('project-settings-title').value.trim();
+  const status = document.getElementById('project-settings-status').value;
+  const integrations = Array.from(document.querySelectorAll('#project-integrations-list input:checked')).map(cb => cb.value);
+
+  try {
+    await api(`/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title, status, integrations })
+    });
+    closeModal('project-settings-modal');
+    const project = await api(`/projects/${id}`);
+    _currentProject = project;
+    document.getElementById('project-title').textContent = project.title;
+    const statusBadge = document.getElementById('project-status-badge');
+    statusBadge.textContent = project.status;
+    statusBadge.style.background = project.status === 'active' ? '#4ade80' : project.status === 'completed' ? '#60a5fa' : '#6b7280';
+  } catch (err) { alert('Failed to save: ' + err.message); }
+});
+
+document.getElementById('delete-project-btn').addEventListener('click', async () => {
+  if (!confirm('Delete this project? This cannot be undone.')) return;
+  try {
+    await api(`/projects/${_currentProject.id}`, { method: 'DELETE' });
+    closeModal('project-settings-modal');
+    document.getElementById('project-chat-view').style.display = 'none';
+    document.getElementById('projects-list-view').style.display = '';
+    _currentProject = null;
+    loadProjects();
   } catch (err) { alert('Delete failed: ' + err.message); }
-}
-window.deleteTask = deleteTask;
-
-async function cancelTask(taskId) {
-  try {
-    await api(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) });
-    closeModal('task-detail-modal');
-    loadTasks();
-  } catch (err) { alert('Cancel failed: ' + err.message); }
-}
-window.cancelTask = cancelTask;
-
-async function removeTaskAgent(taskId, assignmentId) {
-  try {
-    await api(`/tasks/${taskId}/agents/${assignmentId}`, { method: 'DELETE' });
-    openTaskDetail(taskId);
-  } catch (err) { alert('Remove failed: ' + err.message); }
-}
-window.removeTaskAgent = removeTaskAgent;
+});
 
 // --- Integrations ---
 let _ghCurrentRepo = null;
