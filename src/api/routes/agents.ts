@@ -6,23 +6,17 @@ import { getAvailableProviders, getDefaultModels, resolveApiKeyForUser, findFall
 import { runAgent } from "../../agents/agent-runner.js";
 import { authMiddleware } from "../../auth/middleware.js";
 
-// Helper to format agent for JSON response (convert SQLite integers to booleans)
-function formatAgent(agent: any) {
-  return {
-    ...agent,
-    skills: typeof agent.skills === 'string' ? JSON.parse(agent.skills) : agent.skills,
-    config: typeof agent.config === 'string' ? JSON.parse(agent.config) : agent.config,
-    is_builtin: Boolean(agent.is_builtin),
-  };
-}
-
 export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRegistry): Router {
   const router = Router();
 
   router.get("/agents", authMiddleware, (_req, res) => {
     const agents = agentRegistry.getAllAgents();
     res.json({
-      agents: agents.map(formatAgent),
+      agents: agents.map((a) => ({
+        ...a,
+        skills: JSON.parse(a.skills),
+        config: JSON.parse(a.config),
+      })),
     });
   });
 
@@ -32,7 +26,7 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    res.json(formatAgent(agent));
+    res.json({ ...agent, skills: JSON.parse(agent.skills), config: JSON.parse(agent.config) });
   });
 
   router.post("/agents", authMiddleware, (req, res) => {
@@ -77,7 +71,7 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
       });
 
       agentRegistry.invalidateCache();
-      res.status(201).json(formatAgent(agent));
+      res.status(201).json({ ...agent, skills: JSON.parse(agent.skills), config: JSON.parse(agent.config) });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Failed to create agent" });
     }
@@ -128,7 +122,7 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
     agentRegistry.invalidateCache();
 
     const updated = findAgentById(db, agentId)!;
-    res.json(formatAgent(updated));
+    res.json({ ...updated, skills: JSON.parse(updated.skills), config: JSON.parse(updated.config) });
   });
 
   router.delete("/agents/:id", authMiddleware, (req, res) => {
@@ -193,9 +187,10 @@ export function createAgentsRouter(db: Database.Database, agentRegistry: AgentRe
           model = fallback.model;
           apiKey = fallback.apiKey;
         } else {
-          res.status(400).json({
-            error: `No API key configured for ${provider}. Add one in Settings → API Keys.`,
-          });
+          const hint = provider === 'moonshot'
+            ? 'Kimi K2.5 is free but requires a Moonshot API key. Get one free at platform.moonshot.ai/console/api-keys, then add it in Settings → API Keys → Kimi (Moonshot).'
+            : `No API key configured for ${provider}. Add one in Settings → API Keys.`;
+          res.status(400).json({ error: hint });
           return;
         }
       }

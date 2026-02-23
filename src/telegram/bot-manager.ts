@@ -243,7 +243,8 @@ export class BotManager {
           `⚠️ No API key configured.\n\n` +
             `Please add at least one AI provider API key in the Claw Staffer dashboard:\n` +
             `Settings → API Keys\n\n` +
-            `Supported: OpenAI, Anthropic, Google Gemini`,
+            `Supported: OpenAI, Anthropic, Google Gemini, Grok, Kimi (free), DeepSeek, MiniMax\n\n` +
+            `💡 Tip: Kimi K2.5 is completely free! Get a key at platform.moonshot.ai`,
           { replyToMessageId: msg.messageId }
         );
         return;

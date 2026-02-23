@@ -215,9 +215,10 @@ export function createBotsRouter(db: Database.Database, botManager: BotManager):
           model = fallback.model;
           apiKey = fallback.apiKey;
         } else {
-          res.status(400).json({
-            error: `No API key configured for ${provider}. Add one in Settings → API Keys.`,
-          });
+          const hint = provider === 'moonshot'
+            ? 'Kimi K2.5 is free but requires a Moonshot API key. Get one free at platform.moonshot.ai/console/api-keys, then add it in Settings → API Keys → Kimi (Moonshot).'
+            : `No API key configured for ${provider}. Add one in Settings → API Keys.`;
+          res.status(400).json({ error: hint });
           return;
         }
       }
