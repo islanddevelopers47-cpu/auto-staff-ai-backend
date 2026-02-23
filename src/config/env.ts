@@ -25,6 +25,7 @@ const EnvSchema = z.object({
   NETLIFY_CLIENT_ID: z.string().optional(),
   NETLIFY_CLIENT_SECRET: z.string().optional(),
   DOCKER_HOST: z.string().optional(),
+  MOONSHOT_FREE_API_KEY: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof EnvSchema>;

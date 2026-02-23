@@ -5,6 +5,19 @@ import type Database from "better-sqlite3";
 
 const log = createLogger("model-providers");
 
+/**
+ * Built-in free Kimi K2.5 API key from Moonshot AI.
+ * Kimi K2.5 is completely free (zero cost per token).
+ * Users can override this with their own Moonshot key.
+ */
+function getMoonshotFreeKey(): string | undefined {
+  try {
+    return getEnv().MOONSHOT_FREE_API_KEY || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -339,8 +352,8 @@ async function moonshotCompletion(
   apiKeyOverride?: string
 ): Promise<ChatCompletionResult> {
   const config = getProviderConfig("moonshot");
-  const apiKey = apiKeyOverride ?? config.apiKey;
-  if (!apiKey) throw new Error("Moonshot (Kimi) API key not configured");
+  const apiKey = apiKeyOverride ?? config.apiKey ?? getMoonshotFreeKey();
+  if (!apiKey) throw new Error("Moonshot (Kimi) API key not configured. Get a free key at platform.moonshot.ai");
 
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -535,7 +548,11 @@ export function resolveApiKeyForBot(
   provider: ProviderName
 ): string | undefined {
   // Only the bot owner's key — no cross-user fallback, no env var fallback
-  return getApiKeyForBot(db, botId, provider);
+  const userKey = getApiKeyForBot(db, botId, provider);
+  if (userKey) return userKey;
+  // For moonshot, fall back to built-in free key
+  if (provider === "moonshot") return getMoonshotFreeKey();
+  return undefined;
 }
 
 /**
@@ -571,7 +588,11 @@ export function resolveApiKeyForUser(
   provider: ProviderName
 ): string | undefined {
   // Only this user's key — no cross-user fallback, no env var fallback
-  return getRawApiKey(db, userId, provider);
+  const userKey = getRawApiKey(db, userId, provider);
+  if (userKey) return userKey;
+  // For moonshot, fall back to built-in free key
+  if (provider === "moonshot") return getMoonshotFreeKey();
+  return undefined;
 }
 
 /**
