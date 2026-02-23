@@ -14,6 +14,7 @@ import { createWebBotsRouter } from "./web-bots.js";
 import { createIntegrationsRouter } from "./integrations.js";
 import { createAgentTasksRouter } from "./agent-tasks.js";
 import { createProjectsRouter } from "./projects.js";
+import { createChatRouter } from "./chat.js";
 
 export function registerRoutes(
   app: Express,
@@ -56,6 +57,9 @@ export function registerRoutes(
 
   // Projects routes
   app.use("/api", createProjectsRouter(db, agentRegistry));
+
+  // Mobile chat route
+  app.use("/api", createChatRouter(db, agentRegistry));
 
   // Telegram webhook endpoint (per-bot)
   app.post("/api/telegram/webhook/:botId", (req, res) => {

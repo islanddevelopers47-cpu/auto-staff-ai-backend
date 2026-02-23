@@ -26,7 +26,7 @@ export function createApiKeysRouter(db: Database.Database): Router {
       res.status(400).json({ error: "provider is required" });
       return;
     }
-    const validProviders = ["openai", "anthropic", "google", "grok", "ollama"];
+    const validProviders = ["openai", "anthropic", "google", "grok", "moonshot", "deepseek", "minimax", "ollama"];
 
     // Ollama doesn't need an API key — it stores the base URL instead
     if (provider.toLowerCase() !== "ollama" && (!apiKey || typeof apiKey !== "string")) {
@@ -120,6 +120,25 @@ async function testProviderKey(provider: string, apiKey: string): Promise<boolea
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       return res.ok;
+    }
+    case "moonshot": {
+      const res = await fetch("https://api.moonshot.ai/v1/models", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      return res.ok;
+    }
+    case "deepseek": {
+      const res = await fetch("https://api.deepseek.com/v1/models", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      return res.ok;
+    }
+    case "minimax": {
+      // MiniMax uses OpenAI-compatible endpoint
+      const res = await fetch("https://api.minimax.io/v1/models", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      return res.status !== 401 && res.status !== 403;
     }
     case "ollama": {
       // Ollama runs locally — just ping the tags endpoint

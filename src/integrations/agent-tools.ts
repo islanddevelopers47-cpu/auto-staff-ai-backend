@@ -10,6 +10,13 @@ import { resolveIntegrationCred } from "../database/integration-config.js";
 import { updateAccessToken } from "../database/connected-accounts.js";
 import { createLogger } from "../utils/logger.js";
 import { webSearch, webFetch } from "./web-search.js";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as fs from "node:fs";
+
+const execAsync = promisify(exec);
 
 const log = createLogger("agent-tools");
 
@@ -96,6 +103,30 @@ export function buildIntegrationToolsPrompt(db: Database.Database, userId: strin
     prompt += "- `[[TOOL:docker_restart|containerId]]` — Restart a container\n";
     prompt += "- `[[TOOL:docker_list_images]]` — List Docker images\n\n";
   }
+
+  // Screen capture — always available on desktop
+  prompt += "## Screen Capture\n\n";
+  prompt += "Available tools:\n";
+  prompt += "- `[[TOOL:screen_capture|filename]]` — Capture a screenshot of the entire screen. Saves to the temp directory and returns the file path. The filename is optional (defaults to screenshot.png).\n";
+  prompt += "- `[[TOOL:screen_capture_window|app_name|filename]]` — Capture a screenshot of a specific application window (macOS only). The filename is optional.\n";
+  prompt += "- `[[TOOL:screen_list_windows]]` — List all visible windows with their app names and titles.\n\n";
+
+  // Terminal execution — always available on desktop
+  const platform = os.platform();
+  const shellName = platform === "win32" ? "PowerShell" : "Terminal (bash/zsh)";
+  prompt += `## ${shellName} Execution\n\n`;
+  prompt += "Available tools:\n";
+  prompt += "- `[[TOOL:shell_exec|command]]` — Execute a shell command and return the output (stdout + stderr). ";
+  if (platform === "win32") {
+    prompt += "Commands run in PowerShell.\n";
+  } else {
+    prompt += "Commands run in the default shell (bash/zsh).\n";
+  }
+  prompt += "- `[[TOOL:shell_exec_bg|command]]` — Execute a command in the background (non-blocking). Returns immediately with the process ID.\n";
+  prompt += "- `[[TOOL:shell_read_file|filepath]]` — Read the contents of a file on the local filesystem.\n";
+  prompt += "- `[[TOOL:shell_write_file|filepath|content]]` — Write content to a file on the local filesystem.\n";
+  prompt += "- `[[TOOL:shell_list_dir|dirpath]]` — List files and directories at the given path.\n\n";
+  prompt += "**Security**: Shell commands are sandboxed to the user's workspace. Do not execute destructive commands without explicit user confirmation.\n\n";
 
   prompt += "**Important**: Only use one tool at a time. Wait for the result before using another tool.\n";
   prompt += "When you use a tool, explain to the user what you're doing.\n";
@@ -397,6 +428,240 @@ async function executeTool(
       }
       default:
         return `Unknown Docker tool: ${action}`;
+    }
+  }
+
+  // Screen capture tools — always available on desktop
+  if (action.startsWith("screen_")) {
+    const platform = os.platform();
+    const tmpDir = os.tmpdir();
+
+    switch (action) {
+      case "screen_capture": {
+        const filename = params[0] || `screenshot-${Date.now()}.png`;
+        const outPath = path.join(tmpDir, filename);
+
+        if (platform === "darwin") {
+          await execAsync(`screencapture -x "${outPath}"`);
+        } else if (platform === "win32") {
+          await execAsync(
+            `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; ` +
+            `$screen = [System.Windows.Forms.Screen]::PrimaryScreen; ` +
+            `$bitmap = New-Object System.Drawing.Bitmap($screen.Bounds.Width, $screen.Bounds.Height); ` +
+            `$graphics = [System.Drawing.Graphics]::FromImage($bitmap); ` +
+            `$graphics.CopyFromScreen($screen.Bounds.Location, [System.Drawing.Point]::Empty, $screen.Bounds.Size); ` +
+            `$bitmap.Save('${outPath.replace(/'/g, "''")}'); ` +
+            `$graphics.Dispose(); $bitmap.Dispose()"`
+          );
+        } else {
+          // Linux fallback
+          try {
+            await execAsync(`import -window root "${outPath}"`);
+          } catch {
+            return "Screen capture is not supported on this platform. Install ImageMagick for Linux support.";
+          }
+        }
+
+        if (fs.existsSync(outPath)) {
+          const stats = fs.statSync(outPath);
+          return `Screenshot captured: ${outPath} (${(stats.size / 1024).toFixed(1)} KB)`;
+        }
+        return "Screenshot capture failed — file was not created.";
+      }
+      case "screen_capture_window": {
+        const appName = params[0];
+        const filename = params[1] || `window-${Date.now()}.png`;
+        const outPath = path.join(tmpDir, filename);
+
+        if (!appName) return "Error: app_name is required";
+
+        if (platform === "darwin") {
+          // Use screencapture with window selection by app name
+          const script = `
+            tell application "System Events"
+              set frontApp to name of first application process whose frontmost is true
+            end tell
+            tell application "${appName.replace(/"/g, '\\"')}" to activate
+            delay 0.5
+          `;
+          try {
+            await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
+            await execAsync(`screencapture -x -l $(osascript -e 'tell application "System Events" to id of first window of application process "${appName.replace(/"/g, '\\"')}"') "${outPath}" 2>/dev/null || screencapture -x "${outPath}"`);
+          } catch {
+            // Fallback to full screen capture
+            await execAsync(`screencapture -x "${outPath}"`);
+          }
+        } else {
+          return "Window-specific capture is only available on macOS. Use screen_capture for full screen.";
+        }
+
+        if (fs.existsSync(outPath)) {
+          const stats = fs.statSync(outPath);
+          return `Window screenshot captured for "${appName}": ${outPath} (${(stats.size / 1024).toFixed(1)} KB)`;
+        }
+        return "Window screenshot capture failed.";
+      }
+      case "screen_list_windows": {
+        if (platform === "darwin") {
+          try {
+            const { stdout } = await execAsync(
+              `osascript -e 'tell application "System Events" to get {name, title} of every window of every application process whose visible is true' 2>/dev/null || echo "[]"`
+            );
+            // More reliable approach using CGWindowListCopyWindowInfo
+            const { stdout: windowList } = await execAsync(
+              `python3 -c "
+import Quartz, json
+windows = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+result = []
+for w in windows:
+    owner = w.get('kCGWindowOwnerName', '')
+    name = w.get('kCGWindowName', '')
+    if owner and name:
+        result.append(f'{owner}: {name}')
+print('\\n'.join(result[:30]))
+" 2>/dev/null || echo "Could not list windows"`
+            );
+            return `Visible windows:\n${windowList.trim() || "No windows found"}`;
+          } catch {
+            return "Could not list windows. Ensure accessibility permissions are granted.";
+          }
+        } else if (platform === "win32") {
+          try {
+            const { stdout } = await execAsync(
+              `powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object -First 30 ProcessName, MainWindowTitle | Format-Table -AutoSize | Out-String"`
+            );
+            return `Visible windows:\n${stdout.trim()}`;
+          } catch {
+            return "Could not list windows.";
+          }
+        }
+        return "Window listing is not supported on this platform.";
+      }
+      default:
+        return `Unknown screen tool: ${action}`;
+    }
+  }
+
+  // Shell / Terminal execution tools — always available on desktop
+  if (action.startsWith("shell_")) {
+    const platform = os.platform();
+    const TIMEOUT_MS = 30000; // 30 second timeout for commands
+    const MAX_OUTPUT = 8000; // Max characters of output to return
+
+    switch (action) {
+      case "shell_exec": {
+        const command = params[0];
+        if (!command) return "Error: command is required";
+
+        // Security: block obviously destructive patterns
+        const dangerous = [
+          /\brm\s+-rf\s+[\/~]/i,
+          /\bformat\b.*\/[a-z]/i,
+          /\bmkfs\b/i,
+          /\bdd\s+if=/i,
+          />\s*\/dev\/sd/i,
+        ];
+        for (const pattern of dangerous) {
+          if (pattern.test(command)) {
+            return "Error: This command has been blocked for safety. Destructive filesystem commands require explicit user confirmation.";
+          }
+        }
+
+        try {
+          const shell = platform === "win32" ? "powershell.exe" : "/bin/bash";
+          const shellArgs = platform === "win32"
+            ? ["-NoProfile", "-Command", command]
+            : ["-c", command];
+
+          const { stdout, stderr } = await execAsync(command, {
+            timeout: TIMEOUT_MS,
+            maxBuffer: 1024 * 1024,
+            shell: shell,
+            env: { ...process.env, TERM: "dumb" },
+          });
+
+          let output = stdout || "";
+          if (stderr) output += (output ? "\n\n" : "") + `STDERR:\n${stderr}`;
+
+          if (output.length > MAX_OUTPUT) {
+            output = output.slice(0, MAX_OUTPUT) + `\n\n... (output truncated, ${output.length} total chars)`;
+          }
+          return output || "(command completed with no output)";
+        } catch (err: any) {
+          const output = (err.stdout || "") + (err.stderr ? `\nSTDERR: ${err.stderr}` : "");
+          return `Command failed (exit code ${err.code ?? "unknown"}):\n${output.slice(0, MAX_OUTPUT) || err.message}`;
+        }
+      }
+      case "shell_exec_bg": {
+        const command = params[0];
+        if (!command) return "Error: command is required";
+
+        try {
+          const shell = platform === "win32" ? "powershell.exe" : "/bin/bash";
+          const child = exec(command, { shell, env: { ...process.env, TERM: "dumb" } });
+          const pid = child.pid;
+          child.unref();
+          return `Background process started with PID: ${pid}`;
+        } catch (err: any) {
+          return `Failed to start background process: ${err.message}`;
+        }
+      }
+      case "shell_read_file": {
+        const filepath = params[0];
+        if (!filepath) return "Error: filepath is required";
+
+        try {
+          const resolved = path.resolve(filepath);
+          const stats = fs.statSync(resolved);
+          if (stats.size > 512 * 1024) {
+            return `Error: File is too large (${(stats.size / 1024).toFixed(1)} KB). Max 512 KB.`;
+          }
+          const content = fs.readFileSync(resolved, "utf-8");
+          return `File: ${resolved} (${stats.size} bytes)\n\`\`\`\n${content.slice(0, MAX_OUTPUT)}\n\`\`\``;
+        } catch (err: any) {
+          return `Error reading file: ${err.message}`;
+        }
+      }
+      case "shell_write_file": {
+        const filepath = params[0];
+        const content = params.slice(1).join("|"); // rejoin in case content contains |
+        if (!filepath) return "Error: filepath is required";
+
+        try {
+          const resolved = path.resolve(filepath);
+          const dir = path.dirname(resolved);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          fs.writeFileSync(resolved, content, "utf-8");
+          return `File written: ${resolved} (${Buffer.byteLength(content, "utf-8")} bytes)`;
+        } catch (err: any) {
+          return `Error writing file: ${err.message}`;
+        }
+      }
+      case "shell_list_dir": {
+        const dirpath = params[0] || ".";
+        try {
+          const resolved = path.resolve(dirpath);
+          const entries = fs.readdirSync(resolved, { withFileTypes: true });
+          const list = entries.slice(0, 100).map((e) => {
+            const icon = e.isDirectory() ? "📁" : "📄";
+            let size = "";
+            if (!e.isDirectory()) {
+              try {
+                const s = fs.statSync(path.join(resolved, e.name));
+                size = ` (${(s.size / 1024).toFixed(1)} KB)`;
+              } catch { /* ignore */ }
+            }
+            return `${icon} ${e.name}${size}`;
+          });
+          return `Contents of ${resolved}:\n${list.join("\n") || "(empty directory)"}`;
+        } catch (err: any) {
+          return `Error listing directory: ${err.message}`;
+        }
+      }
+      default:
+        return `Unknown shell tool: ${action}`;
     }
   }
 

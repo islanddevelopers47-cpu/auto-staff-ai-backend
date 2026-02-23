@@ -29,7 +29,7 @@ export interface ChatCompletionResult {
   finishReason?: string;
 }
 
-export type ProviderName = "openai" | "anthropic" | "google" | "ollama" | "grok";
+export type ProviderName = "openai" | "anthropic" | "google" | "ollama" | "grok" | "moonshot" | "deepseek" | "minimax";
 
 interface ProviderConfig {
   apiKey?: string;
@@ -51,6 +51,12 @@ function getProviderConfig(provider: ProviderName): ProviderConfig {
       return { baseUrl: env.OLLAMA_BASE_URL ?? "http://localhost:11434" };
     case "grok":
       return { baseUrl: "https://api.x.ai/v1" };
+    case "moonshot":
+      return { baseUrl: "https://api.moonshot.ai/v1" };
+    case "deepseek":
+      return { baseUrl: "https://api.deepseek.com/v1" };
+    case "minimax":
+      return { baseUrl: "https://api.minimax.io/v1" };
   }
 }
 
@@ -70,6 +76,12 @@ export async function chatCompletion(
       return ollamaCompletion(options);
     case "grok":
       return grokCompletion(options, apiKeyOverride);
+    case "moonshot":
+      return moonshotCompletion(options, apiKeyOverride);
+    case "deepseek":
+      return deepseekCompletion(options, apiKeyOverride);
+    case "minimax":
+      return minimaxCompletion(options, apiKeyOverride);
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }
@@ -322,6 +334,141 @@ async function grokCompletion(
   };
 }
 
+async function moonshotCompletion(
+  options: ChatCompletionOptions,
+  apiKeyOverride?: string
+): Promise<ChatCompletionResult> {
+  const config = getProviderConfig("moonshot");
+  const apiKey = apiKeyOverride ?? config.apiKey;
+  if (!apiKey) throw new Error("Moonshot (Kimi) API key not configured");
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    log.error(`Moonshot API error ${response.status}: ${body}`);
+    throw new Error(`Moonshot API error: ${response.status} ${body}`);
+  }
+
+  const data = (await response.json()) as any;
+  const choice = data.choices?.[0];
+
+  return {
+    content: choice?.message?.content ?? "",
+    model: data.model ?? options.model,
+    usage: data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens,
+        }
+      : undefined,
+    finishReason: choice?.finish_reason,
+  };
+}
+
+async function deepseekCompletion(
+  options: ChatCompletionOptions,
+  apiKeyOverride?: string
+): Promise<ChatCompletionResult> {
+  const config = getProviderConfig("deepseek");
+  const apiKey = apiKeyOverride ?? config.apiKey;
+  if (!apiKey) throw new Error("DeepSeek API key not configured");
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    log.error(`DeepSeek API error ${response.status}: ${body}`);
+    throw new Error(`DeepSeek API error: ${response.status} ${body}`);
+  }
+
+  const data = (await response.json()) as any;
+  const choice = data.choices?.[0];
+
+  return {
+    content: choice?.message?.content ?? "",
+    model: data.model ?? options.model,
+    usage: data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens,
+        }
+      : undefined,
+    finishReason: choice?.finish_reason,
+  };
+}
+
+async function minimaxCompletion(
+  options: ChatCompletionOptions,
+  apiKeyOverride?: string
+): Promise<ChatCompletionResult> {
+  const config = getProviderConfig("minimax");
+  const apiKey = apiKeyOverride ?? config.apiKey;
+  if (!apiKey) throw new Error("MiniMax API key not configured");
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    log.error(`MiniMax API error ${response.status}: ${body}`);
+    throw new Error(`MiniMax API error: ${response.status} ${body}`);
+  }
+
+  const data = (await response.json()) as any;
+  const choice = data.choices?.[0];
+
+  return {
+    content: choice?.message?.content ?? "",
+    model: data.model ?? options.model,
+    usage: data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens,
+        }
+      : undefined,
+    finishReason: choice?.finish_reason,
+  };
+}
+
 export function getAvailableProviders(): { name: ProviderName; configured: boolean }[] {
   const env = getEnv();
   // Without a user context we can only confirm Ollama (no API key needed)
@@ -330,6 +477,9 @@ export function getAvailableProviders(): { name: ProviderName; configured: boole
     { name: "anthropic", configured: false },
     { name: "google", configured: false },
     { name: "grok", configured: false },
+    { name: "moonshot", configured: false },
+    { name: "deepseek", configured: false },
+    { name: "minimax", configured: false },
     { name: "ollama", configured: !!env.OLLAMA_BASE_URL },
   ];
 }
@@ -359,6 +509,18 @@ export function getAvailableProvidersWithDb(
       name: "grok",
       configured: userId ? !!getRawApiKey(db, userId, "grok") : false,
     },
+    {
+      name: "moonshot",
+      configured: userId ? !!getRawApiKey(db, userId, "moonshot") : false,
+    },
+    {
+      name: "deepseek",
+      configured: userId ? !!getRawApiKey(db, userId, "deepseek") : false,
+    },
+    {
+      name: "minimax",
+      configured: userId ? !!getRawApiKey(db, userId, "minimax") : false,
+    },
     { name: "ollama", configured: !!env.OLLAMA_BASE_URL },
   ];
 }
@@ -386,7 +548,7 @@ export function findFallbackProvider(
   botId: string,
   excludeProvider?: ProviderName
 ): { provider: ProviderName; model: string; apiKey: string } | undefined {
-  const candidates: ProviderName[] = ["openai", "anthropic", "google", "grok", "ollama"];
+  const candidates: ProviderName[] = ["openai", "anthropic", "google", "grok", "moonshot", "deepseek", "minimax", "ollama"];
   for (const p of candidates) {
     if (p === excludeProvider) continue;
     if (p === "ollama") continue; // skip ollama as fallback (needs local setup)
@@ -420,7 +582,7 @@ export function findFallbackProviderForUser(
   userId: string,
   excludeProvider?: ProviderName
 ): { provider: ProviderName; model: string; apiKey: string } | undefined {
-  const candidates: ProviderName[] = ["openai", "anthropic", "google", "grok", "ollama"];
+  const candidates: ProviderName[] = ["openai", "anthropic", "google", "grok", "moonshot", "deepseek", "minimax", "ollama"];
   for (const p of candidates) {
     if (p === excludeProvider) continue;
     if (p === "ollama") continue;
@@ -448,6 +610,12 @@ export function getDefaultModels(provider: ProviderName): string[] {
       return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"];
     case "grok":
       return ["grok-3", "grok-3-mini", "grok-2", "grok-2-mini"];
+    case "moonshot":
+      return ["kimi-k2.5", "kimi-k2", "moonshot-v1-auto"];
+    case "deepseek":
+      return ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"];
+    case "minimax":
+      return ["MiniMax-M2.5", "MiniMax-M2.1", "MiniMax-M2.1-lightning"];
     case "ollama":
       return ["llama3.2", "llama3.1", "mistral", "codellama", "phi3"];
   }
