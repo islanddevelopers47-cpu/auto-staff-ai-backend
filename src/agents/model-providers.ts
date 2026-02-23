@@ -364,7 +364,7 @@ async function moonshotCompletion(
     body: JSON.stringify({
       model: options.model,
       messages: options.messages,
-      temperature: options.temperature ?? 0.7,
+      temperature: 1,
       max_tokens: options.maxTokens ?? 4096,
     }),
   });
