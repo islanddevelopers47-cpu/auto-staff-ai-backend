@@ -37,31 +37,38 @@ export class AgentRegistry {
 
   private async loadBuiltinAgents(): Promise<void> {
     const agentsDir = path.resolve(process.cwd(), "agents");
-    if (!fs.existsSync(agentsDir)) {
-      log.info("No agents directory found, skipping built-in agents");
-      return;
+
+    // Collect names of built-in agents that still have a JSON definition
+    const validNames = new Set<string>();
+    if (fs.existsSync(agentsDir)) {
+      const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith(".json"));
+      for (const file of files) {
+        try {
+          const filePath = path.join(agentsDir, file);
+          const raw = fs.readFileSync(filePath, "utf-8");
+          const def = JSON.parse(raw) as CreateAgentInput & { id?: string };
+          validNames.add(def.name);
+
+          // Create only if not already present
+          const existing = findAgentByName(this.db, def.name);
+          if (!existing?.is_builtin) {
+            createAgent(this.db, { ...def, isBuiltin: true });
+            log.info(`Loaded built-in agent: ${def.name}`);
+          }
+        } catch (err) {
+          log.warn(`Failed to load agent from ${file}: ${err}`);
+        }
+      }
     }
 
-    const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith(".json"));
-    for (const file of files) {
-      try {
-        const filePath = path.join(agentsDir, file);
-        const raw = fs.readFileSync(filePath, "utf-8");
-        const def = JSON.parse(raw) as CreateAgentInput & { id?: string };
-
-        // Check if built-in agent already exists
-        const existing = findAgentByName(this.db, def.name);
-        if (existing?.is_builtin) {
-          continue;
-        }
-
-        createAgent(this.db, {
-          ...def,
-          isBuiltin: true,
-        });
-        log.info(`Loaded built-in agent: ${def.name}`);
-      } catch (err) {
-        log.warn(`Failed to load agent from ${file}: ${err}`);
+    // Remove any built-in agents from DB whose JSON file no longer exists
+    const existing = this.db
+      .prepare("SELECT id, name FROM agents WHERE is_builtin = 1")
+      .all() as { id: string; name: string }[];
+    for (const agent of existing) {
+      if (!validNames.has(agent.name)) {
+        this.db.prepare("DELETE FROM agents WHERE id = ?").run(agent.id);
+        log.info(`Removed built-in agent no longer in agents dir: ${agent.name}`);
       }
     }
   }
